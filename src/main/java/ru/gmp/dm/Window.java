@@ -9,6 +9,47 @@ public class Window extends Frame {
     private final TextArea history;
     private final TextField input;
 
+    public static class WOR {
+        private final TextField targetIpF;
+        private final TextField usernameF;
+        private final Dialog dialog;
+
+        private String targetIP = "localhost";
+        private String username = "TestUser";
+
+        public WOR(Frame owner) {
+            dialog = new Dialog(owner, "DecentralizedMessenger", true);
+            dialog.setSize(300, 150);
+            dialog.setLocationRelativeTo(null);
+            dialog.setLayout(new FlowLayout());
+
+            targetIpF = new TextField(targetIP, 15);
+            usernameF = new TextField(username, 15);
+            Button button = new Button("Start");
+
+            button.addActionListener(e -> {
+                targetIP = targetIpF.getText();
+                username = usernameF.getText(); // Исправлено: getText() вместо getName()
+                dialog.setVisible(false);
+            });
+
+            dialog.add(new Label("Target IP:"));
+            dialog.add(targetIpF);
+            dialog.add(new Label("Username:"));
+            dialog.add(usernameF);
+            dialog.add(button);
+
+            dialog.pack();
+        }
+
+        public void join() {
+            dialog.setVisible(true); // Блокирует выполнение до закрытия диалога
+        }
+
+        public String getIP() { return targetIP; }
+        public String getUsername() { return username; }
+    }
+
     public Window(Main main) {
         setTitle("DecentralizedMessenger");
         setSize(900, 650);

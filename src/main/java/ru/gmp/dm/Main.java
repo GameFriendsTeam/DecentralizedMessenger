@@ -3,6 +3,7 @@ package ru.gmp.dm;
 import org.apache.logging.log4j.*;
 import ru.gmp.dm.network.Network;
 
+import java.awt.*;
 import java.io.*;
 
 public class Main {
@@ -17,19 +18,20 @@ public class Main {
 
     private Main(String[] args) {
         try {
-            System.out.print("Enter addr: ");
-            String addr = new BufferedReader(new InputStreamReader(System.in)).readLine();
-            LOGGER.info("Node addr: {}:1414", addr);
+            Window.WOR wor = new Window.WOR(new Frame());
+            wor.join();
 
-            System.out.print("Enter name: ");
-            String name = new BufferedReader(new InputStreamReader(System.in)).readLine();
+            String addr = wor.getIP();
+            String name = wor.getUsername();
 
             network = new Network(this, addr, 1414, true);
             network.getClient().setUsername(name);
+
         } catch (Exception e) {
             Main.getLogger().error(e);
             Main.getLogger().error(e.getStackTrace());
         }
+
         window = new Window(this);
     }
     public void stop() {
