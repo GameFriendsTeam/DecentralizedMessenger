@@ -27,11 +27,13 @@ public class Window extends Frame {
             usernameF = new TextField(username, 15);
             Button button = new Button("Start");
 
-            button.addActionListener(e -> {
-                targetIP = targetIpF.getText();
-                username = usernameF.getText(); // Исправлено: getText() вместо getName()
-                dialog.setVisible(false);
-            });
+
+            ActionListener listener = this::onEnter;
+
+            targetIpF.addActionListener(listener);
+            usernameF.addActionListener(listener);
+            button.addActionListener(this::onEnter);
+
 
             dialog.add(new Label("Target IP:"));
             dialog.add(targetIpF);
@@ -42,8 +44,14 @@ public class Window extends Frame {
             dialog.pack();
         }
 
+        private void onEnter(ActionEvent e) {
+            targetIP = targetIpF.getText();
+            username = usernameF.getText();
+            dialog.setVisible(false);
+        }
+
         public void join() {
-            dialog.setVisible(true); // Блокирует выполнение до закрытия диалога
+            dialog.setVisible(true);
         }
 
         public String getIP() { return targetIP; }
@@ -78,8 +86,6 @@ public class Window extends Frame {
                 String targetName = targetNameF.getText();
 
                 if (inputText.isEmpty() || targetName.isEmpty()) return;
-
-                Main.getLogger().info("User input: {}", inputText);
 
                 long id = 0;
                 String selfName = main.getNetwork().getClient().getUsername();
