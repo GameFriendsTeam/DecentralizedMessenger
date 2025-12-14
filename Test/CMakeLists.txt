@@ -1,26 +1,31 @@
-cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
+# Тестовое приложение
+add_executable(DM-Test
+    src/main.cpp
+)
 
-set(PROJECT_NAME DMNet-Test)
+# Подключаем библиотеки
+target_link_libraries(DM-Test
+    Client
+    Server
+)
 
-project(${PROJECT_NAME})
+# Устанавливаем пути для include файлов
+target_include_directories(DM-Test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../Client/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../Server/include
+)
 
-add_executable(${PROJECT_NAME} src/main.cpp)
+# Оптимизация для релиза
+set_target_properties(DM-Test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE DMNet-Server)
-target_link_libraries(${PROJECT_NAME} PRIVATE DMNet-Client)
 
-target_include_directories(${PROJECT_NAME} PUBLIC include)
-
-if (WIN32)
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:DMNet-Server>
-            $<TARGET_FILE_DIR:${PROJECT_NAME}>
-    )
-
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:DMNet-Client>
-            $<TARGET_FILE_DIR:${PROJECT_NAME}>
-    )
-endif() 
+# Set default compile flags for GCC
+if(CMAKE_COMPILER_IS_GNUCXX)
+    message(STATUS "GCC detected, adding compile flags")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++98 -pedantic -Wall -Wextra")
+endif(CMAKE_COMPILER_IS_GNUCXX)
