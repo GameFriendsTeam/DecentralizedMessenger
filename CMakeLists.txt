@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 project(DecentarlizedMessenger VERSION 1.0.0)
 
-# Устанавливаем стандарт C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(${CMAKE_SOURCE_DIR}/cmake/CopyDlls.cmake)
 
 # Разные флаги для разных компиляторов
 if(MSVC)
@@ -41,3 +42,5 @@ endif()
 
 # Основное приложение
 add_subdirectory(App)
+
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT DM-App)

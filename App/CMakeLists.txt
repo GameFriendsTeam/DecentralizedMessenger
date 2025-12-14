@@ -1,40 +1,40 @@
-# Основное приложение
-set(APP_SOURCES
-    src/main.cpp
-    src/ConfigManager.cpp
-    src/NetworkManager.cpp
-    src/CommandHandler.cpp
+set(EXE_NAME DM-App)
+
+include(${CMAKE_SOURCE_DIR}/cmake/CopyDlls.cmake)
+
+file(GLOB_RECURSE SOURCE_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
 
-set(APP_HEADERS
-    include/ConfigManager.h
-    include/NetworkManager.h
-    include/CommandHandler.h
+assign_source_groups("${CMAKE_CURRENT_SOURCE_DIR}/src" SOURCE_FILES "src")
+
+add_executable(${EXE_NAME} ${SOURCE_FILES})
+
+target_include_directories(${EXE_NAME}
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-add_executable(DM-App ${APP_SOURCES})
-
-# Подключаем библиотеки
-target_link_libraries(DM-App
-    Client
-    Server
-    Threads::Threads  # Используем Threads вместо pthread
+file(GLOB_RECURSE HEADER_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
 )
 
-# Устанавливаем пути для include файлов
-target_include_directories(DM-App
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../Client/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../Server/include
+assign_source_groups("${CMAKE_CURRENT_SOURCE_DIR}/include" HEADER_FILES "include")
+
+target_sources(${EXE_NAME} PRIVATE
+	${HEADER_FILES}
 )
 
-# Для Windows
+target_link_libraries(${EXE_NAME}
+    Client-Lib
+    Server-Lib
+    Threads::Threads
+)
+
 if(WIN32)
-    target_compile_definitions(DM-App PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(${EXE_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
-# Устанавливаем свойства
 set_target_properties(DM-App PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
@@ -45,7 +45,6 @@ set_target_properties(DM-App PROPERTIES
     RELEASE_POSTFIX ""
 )
 
-# Установочные пути
 install(TARGETS DM-App
     RUNTIME DESTINATION bin
     COMPONENT applications

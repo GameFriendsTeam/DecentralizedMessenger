@@ -1,28 +1,33 @@
 # Client библиотека
 
-file(GLOB CLIENT_HEADERS 
-    ../Server/include/*.h
-    include/*.h
-)
-file(GLOB CLIENT_SOURCES 
-    src/*.cpp
-)
+set(CLIENT Client-Lib)
 
-# Создаем статическую библиотеку
-add_library(Client STATIC ${CLIENT_SOURCES})
+include(${CMAKE_SOURCE_DIR}/cmake/CopyDlls.cmake)
 
-# Устанавливаем пути для include файлов
-target_include_directories(Client
-    PUBLIC 
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-        ${CMAKE_CURRENT_SOURCE_DIR}/../Server/include
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
+file(GLOB_RECURSE SOURCE_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
 
-# Устанавливаем свойства для библиотеки
-set_target_properties(Client PROPERTIES
+assign_source_groups("${CMAKE_CURRENT_SOURCE_DIR}/src" SOURCE_FILES "src")
+
+add_library(${CLIENT} STATIC ${SOURCE_FILES})
+
+target_include_directories(${CLIENT}
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+file(GLOB_RECURSE HEADER_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
+)
+
+assign_source_groups("${CMAKE_CURRENT_SOURCE_DIR}/include" HEADER_FILES "include")
+
+target_sources(${CLIENT} PRIVATE
+	${HEADER_FILES}
+)
+
+set_target_properties(${CLIENT} PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
     CXX_STANDARD 17
@@ -31,9 +36,9 @@ set_target_properties(Client PROPERTIES
 )
 
 # Для многопоточности - используем Threads::Threads вместо pthread
-target_link_libraries(Client Threads::Threads)
+target_link_libraries(${CLIENT} Threads::Threads)
 
 # Для Windows
 if(WIN32)
-    target_compile_definitions(Client PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(${CLIENT} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
