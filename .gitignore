@@ -1,1 +1,7 @@
-build/
+__pycache__
+keys/
+bad_srv.py
+cleaner.cmd
+decrypting_msg.py
+main-cooeds.py
+mem_test.py

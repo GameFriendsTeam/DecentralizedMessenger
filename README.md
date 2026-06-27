@@ -5,4 +5,4 @@ DecentralizedMessenger is windowed p2p messenger
 Is not ready
 
 ## Running
-Currently not avable
+Currently not available

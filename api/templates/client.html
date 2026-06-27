@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Client Web UI</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;padding:16px}
+    .box{border:1px solid #ddd;padding:12px;margin-bottom:12px}
+    #messages{height:300px;overflow:auto;background:#f9f9f9;padding:8px}
+    .msg{border-bottom:1px solid #eee;padding:6px 0}
+    button{width: 80px;}
+    select{left: 100px;width: 150px;}
+  </style>
+</head>
+<body>
+  <h2>Client Web Interface</h2>
+
+  <div class="box">
+    <h3>Connect</h3>
+    <label>Address: <input id="addr" value="127.0.0.1"></label>
+    <label>Port: <input id="port" value="12345"></label>
+    <label>MS Size: <input id="mssp" value="64"></label>
+    <button id="btnConnect">Connect</button>
+    <div id="connectStatus"></div>
+  </div>
+  
+  <div class="box">
+    <h3>Disconnect</h>
+    <button id="BtnDisconnect">Disconnect</button>
+    <div id="disconnectStatus"></div>
+  </div>
+
+  <div class="box">
+    <h3>Username</h3>
+    <input id="username" placeholder="username">
+    <button id="btnSetUser">Set</button>
+    <div id="userStatus"></div>
+  </div>
+
+  <div class="box">
+    <h3>Messages</h3>
+    <div id="messages"></div>
+  </div>
+
+  <div class="box">
+    <h3>Send</h3>
+    <label>To: <input id="to" value="server"></label>
+    <br>
+    <textarea id="content" rows="3" style="width:100%"></textarea>
+    <button id="btnSend">Send</button>
+    <div id="sendStatus"></div>
+  </div>
+
+  <div class="box">
+    <h3>Recive key</h3>
+    <label>To: <input id="toKey" value="server"></label>
+    <br>
+    <select id="mode">
+        <option value="0">Read & send</option>
+        <option value="1">Send & read</option>
+    </select>
+    <br>
+    <button id="btnKey">Recive</button>
+    <div id="keyStatus"></div>
+  </div>
+
+<script>
+async function postJson(url, data){
+  const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+  return res.json();
+}
+
+async function pollMessages(){
+  try{
+    const res = await fetch('/client/messages', {method:'GET'});
+    const data = await res.json();
+    const el = document.getElementById('messages');
+    el.innerHTML = '';
+    for(const m of data){
+      const d = document.createElement('p'); d.className='msg';
+      d.innerText = JSON.stringify(m);
+      el.appendChild(d);
+    }
+  }catch(e){
+    console.error(e);
+  }
+}
+
+
+function start() {
+	setInterval(pollMessages, 1000);
+}
+
+document.getElementById('btnConnect').addEventListener('click', async ()=>{
+  const addr = document.getElementById('addr').value;
+  const port = document.getElementById('port').value;
+  const mssp = document.getElementById('mssp').value;
+  const r = await postJson('/client/connect', {addr, port, mssp});
+  document.getElementById('connectStatus').innerText = JSON.stringify(r);
+  start();
+});
+
+document.getElementById('btnSetUser').addEventListener('click', async ()=>{
+  const username = document.getElementById('username').value;
+  const r = await postJson('/client/username', {username});
+  document.getElementById('userStatus').innerText = JSON.stringify(r);
+});
+
+document.getElementById('btnSend').addEventListener('click', async ()=>{
+  const to = document.getElementById('to').value;
+  const content = document.getElementById('content').value;
+  const r = await postJson('/client/send', {to, content});
+  document.getElementById('sendStatus').innerText = JSON.stringify(r);
+});
+
+document.getElementById("btnKey").addEventListener('click', async () =>{
+  const to = document.getElementById("toKey").value;
+  const mode = document.getElementById("mode").value;
+  const r = await postJson('/client/keys', {to, mode});
+  document.getElementById('keyStatus').innerText = JSON.stringify(r);
+});
+
+document.getElementById("BtnDisconnect").addEventListener('click', async () =>{
+	const r = await postJson('/client/disconnect', {"sure": true});
+	document.getElementById("disconnectStatus").innerText = JSON.stringify(r);
+})
+
+//window.onload = pollMessages;
+</script>
+</body>
+</html>
