@@ -1,8 +1,8 @@
-from api.utils.Encryption import Encription
+from api.utils.Encryption import Encryption
 import json
 
 class EncryptedPacket:
-	def __init__(self, data: dict, encrypt: Encription):
+	def __init__(self, data: dict, encrypt: Encryption):
 		self.data = data
 		self.encrypt = encrypt
 
@@ -34,13 +34,13 @@ class EncryptedPacket:
 		return self.data.get(name, None)
 
 	@staticmethod
-	def fromRaw(encrypted: str, encrypt: Encription):
+	def fromRaw(encrypted: str, encrypt: Encryption):
 		nonce, chipertext = encrypted.split()
 		normal = encrypt.decrypt_message(bytes(nonce), bytes(chipertext))
 		return EncryptedPacket(json.loads(normal), encrypt)
 
 	@staticmethod
-	def staticPacket(data, max_len: int, encrypt: Encription) -> str:
+	def staticPacket(data, max_len: int, encrypt: Encryption) -> str:
 		packet0 = EncryptedPacket(data, encrypt)
 		pl0 = len(packet0)
 

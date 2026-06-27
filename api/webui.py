@@ -12,7 +12,7 @@ import colorlog
 
 from api.tcp.Client import Client
 from api.Packet import Packet
-from api.utils.Encryption import Encription
+from api.utils.Encryption import Encryption
 from api.utils.Other import load_public_key
 
 
@@ -30,7 +30,7 @@ class ClientManager:
 		self.messages: List[dict] = []
 		self.lock = threading.Lock()
 		self.thread: threading.Thread | None = None
-		self.encript: Encription = Encription()
+		self.encript: Encryption = Encryption()
 		self.stoped: bool = False
 		self.encript_enable: bool = False
 

@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidSignature
 from cryptography.fernet import Fernet
-from api.utils.Encryption import Encription, FileEncription, SecureEncription
+from api.utils.Encryption import Encryption, FileEncryption, SecureEncryption
 import socket, threading, time
 from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
@@ -28,8 +28,8 @@ class Client:
 		self.targetPort = port
 		self.size_sync_p = mssp
 		self.username = username
-		self.encripts = {} # Of SecureEncription
-		self.srv_enc = Encription()
+		self.encripts = {} # Of SecureEncryption
+		self.srv_enc = Encryption()
 		
 
 	def getUsername(self): return self.username
@@ -178,14 +178,14 @@ class Client:
 		if encript:
 			return encript
 
-		encript = SecureEncription(self.getUsername())
+		encript = SecureEncryption(self.getUsername())
 		encript.generate_signing_keypair()
 		encript.generate_keypair()
 
 		self.encripts[to] = encript
 		return encript
 
-	def get_encript(self, to: str) -> SecureEncription:
+	def get_encript(self, to: str) -> SecureEncryption:
 		return self.encripts.get(to, None)
 
 

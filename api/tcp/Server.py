@@ -4,7 +4,7 @@ from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
 from api.tcp.Client import Client
 from api.utils.Other import load_public_key
-from api.utils.Encryption import Encription
+from api.utils.Encryption import Encryption
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import x25519, ed25519
 from cryptography.hazmat.primitives import serialization, hashes
@@ -37,7 +37,7 @@ class Server:
 	def init_encrypt(self, obj):
 		if obj in self._encryptes:
 			return self._encryptes[obj]
-		enc = Encription()
+		enc = Encryption()
 		pr_k, pub_k = enc.generate_keypair()
 		key_bytes = enc.serialize_public_key()
 		pkt = Packet({"key": list(key_bytes)})

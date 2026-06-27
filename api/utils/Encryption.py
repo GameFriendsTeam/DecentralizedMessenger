@@ -12,7 +12,7 @@ import json
 import time
 
 
-class Encription:
+class Encryption:
 	def __init__(self):
 		...
 
@@ -51,7 +51,7 @@ class Encription:
 		return aesgcm.decrypt(nonce, ciphertext, None)
 
 
-class FileEncription:
+class FileEncryption:
 	def __init__(self, key = None):
 		self.key = Fernet.generate_key()
 
@@ -76,7 +76,7 @@ class SecurityError(Exception):
 	"""Ошибка безопасности"""
 	pass
 
-class SecureEncription:
+class SecureEncryption:
 	def __init__(self, username: str):
 		self.username = username
 

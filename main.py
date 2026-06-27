@@ -10,7 +10,7 @@ from api.tcp.Client import Client
 from api.udp.UDPClient import UDPClient
 from api.udp.UDPServer import UDPServer
 from api.Packet import Packet
-from api.utils.Encryption import Encription, FileEncription, SecureEncription
+from api.utils.Encryption import Encryption, FileEncryption, SecureEncryption
 from api.utils.network import find_servers_local, find_servers_global, ScanStatus
 from pathlib import Path
 from api.utils.Other import load_public_key, Config
@@ -229,7 +229,7 @@ def handle_client_4clnt(client):
 						encrypted = pkt0.get("encrypted")
 						key = bytes(encript.decrypt_message(bytes(encrypted[0]), bytes(encrypted[1])))
 
-						fe = FileEncription(key)
+						fe = FileEncryption(key)
 						decrypted = fe.decrypt(bytes(pkt1.get("encrypted")))
 
 						encrypted = pkt1.get("encrypted")
@@ -294,7 +294,7 @@ def handle_client_4clnt(client):
 				print("Encryption is not activated")
 				continue
 
-			fe = FileEncription()
+			fe = FileEncryption()
 			key = fe.getKey()
 			ed = fe.encrypt(file_path)
 			path_obj = Path(file_path)
