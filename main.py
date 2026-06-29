@@ -13,7 +13,8 @@ from api.Packet import Packet
 from api.utils.Encryption import Encryption, FileEncryption, SecureEncryption
 from api.utils.network import find_servers_local, find_servers_global, ScanStatus
 from pathlib import Path
-from api.utils.Other import load_public_key, Config
+from api.utils.Other import load_public_key, Config, bytes_to_base64, base64_to_bytes
+from api.utils.Audio import Audio
 import json, threading, random, uuid
 import logging
 import numpy as np
@@ -209,7 +210,7 @@ def handle_client_4clnt(client):
 						nonce = packet.get("encrypted", [])[0]
 						ciphertext = packet.get("encrypted", [])[1]
 
-						decripted = encript.decrypt_message(bytes(nonce), bytes(ciphertext)).decode("utf-8")
+						decripted = encript.decrypt_message(base64_to_bytes(nonce), base64_to_bytes(ciphertext)).decode("utf-8")
 						print(f"{sender}: {decripted}")
 						continue
 
@@ -227,16 +228,16 @@ def handle_client_4clnt(client):
 							continue
 
 						encrypted = pkt0.get("encrypted")
-						key = bytes(encript.decrypt_message(bytes(encrypted[0]), bytes(encrypted[1])))
+						key = bytes(encript.decrypt_message(base64_to_bytes(encrypted[0]), base64_to_bytes(encrypted[1])))
 
 						fe = FileEncryption(key)
-						decrypted = fe.decrypt(bytes(pkt1.get("encrypted")))
+						decrypted = fe.decrypt(base64_to_bytes(pkt1.get("encrypted")))
 
-						encrypted = pkt1.get("encrypted")
-						filename = encript.decrypt_message(bytes(encrypted[0]), bytes(encrypted[1]))
+						name_enc = pkt1.get("filename")
+						filename = encript.decrypt_message(base64_to_bytes(name_enc[0]), base64_to_bytes(name_enc[1])).decode("utf-8")
 
 						with open(filename, "wb") as f:
-							f.write(decripted)
+							f.write(decrypted)
 						continue
 
 					print(f"{sender}: {content}")
@@ -308,7 +309,7 @@ def handle_client_4clnt(client):
 				"type": "key2file",
 				"from": client.getUsername(),
 				"to": current_getter,
-				"encrypted": [list(nonce), list(ciphertext)]
+				"encrypted": [bytes_to_base64(nonce), bytes_to_base64(ciphertext)]
 			}))
 			status0 = client.read()
 
@@ -318,8 +319,8 @@ def handle_client_4clnt(client):
 				"type": "filedata",
 				"from": client.getUsername(),
 				"to": current_getter,
-				"encrypted": list(ed),
-				"filename": [list(nonce), list(ciphertext)]
+				"encrypted": bytes_to_base64(ed),
+				"filename": [bytes_to_base64(nonce), bytes_to_base64(ciphertext)]
 			}))
 			status1 = client.read()
 			print(status0)
@@ -351,7 +352,7 @@ def handle_client_4clnt(client):
 					for nda in audio.listen(1):
 						data = nda.tobytes()
 						nonce, ciphertext = encript.encrypt_message(data)
-						to_send = f"{nonce}:{ciphertext}".encode("utf-8")
+						to_send = f"{bytes_to_base64(nonce)}:{bytes_to_base64(ciphertext)}".encode("utf-8")
 						udp_clnt.send(target_addr, port, to_send)
 
 			def udp_handle_s(udp_srv, srv_socket):
@@ -359,7 +360,7 @@ def handle_client_4clnt(client):
 					pkt, addr = udp_srv.read(chunk*channels*2)
 					data = pkt.decode("utf-8").split(':')
 					nonce, ciphertext = data[0], data[1]
-					decoded_data = encript.decrypt_message(bytes(nonce), bytes(ciphertext)).decode("utf-8")
+					decoded_data = encript.decrypt_message(base64_to_bytes(nonce), base64_to_bytes(ciphertext)).decode("utf-8")
 					to_speak = np.frombuffer(decoded_data, dtype='<u2')
 					audio.speak(to_speak)
 
@@ -377,7 +378,7 @@ def handle_client_4clnt(client):
 					"content": "Encrypted",
 					"from": client.getUsername(),
 					"to": current_getter,
-					"encrypted": [list(nonce), list(ciphertext)]
+					"encrypted": [bytes_to_base64(nonce), bytes_to_base64(ciphertext)]
 				}))
 			else:
 				client.transmit(Packet({

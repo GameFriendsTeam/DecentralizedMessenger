@@ -1,4 +1,5 @@
 import json
+import socket as socket_module
 
 from cryptography.hazmat.primitives.asymmetric import x25519
 import os
@@ -10,6 +11,29 @@ def format_bytes(size):
 			return f"{size:.2f} {unit}"
 		size /= 1024
 	return f"{size:.2f} EB"
+
+
+def recv_exact(sock: socket_module.socket, n: int) -> bytes:
+	"""Читает из TCP-сокета ровно n байт, дочитывая в цикле.
+
+	TCP не гарантирует, что recv(n) вернёт все n байт за один вызов —
+	данные могут прийти по частям (особенно на не-loopback соединениях
+	или при больших пакетах). Без этого возможна потеря/обрезка данных.
+
+	Возвращает b"" если соединение было закрыто до получения n байт.
+	"""
+	if n <= 0:
+		return b""
+	chunks = []
+	remaining = n
+	while remaining > 0:
+		chunk = sock.recv(remaining)
+		if not chunk:
+			# Соединение закрыто удалённой стороной
+			return b""
+		chunks.append(chunk)
+		remaining -= len(chunk)
+	return b"".join(chunks)
 
 
 def load_public_key(data: bytes):
@@ -60,3 +84,11 @@ class Config:
 			return
 		with open(self.filename, 'r') as f:
 			self._data = json.load(f)
+
+def bytes_to_base64(data: bytes) -> str:
+	import base64
+	return base64.b64encode(data).decode("utf-8")
+
+def base64_to_bytes(data: str) -> bytes:
+	import base64
+	return base64.b64decode(data.encode("utf-8"))

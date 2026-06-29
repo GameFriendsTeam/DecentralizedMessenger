@@ -3,7 +3,7 @@ import threading, uuid
 from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
 from api.tcp.Client import Client
-from api.utils.Other import load_public_key
+from api.utils.Other import load_public_key, recv_exact, base64_to_bytes, bytes_to_base64
 from api.utils.Encryption import Encryption
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import x25519, ed25519
@@ -40,10 +40,10 @@ class Server:
 		enc = Encryption()
 		pr_k, pub_k = enc.generate_keypair()
 		key_bytes = enc.serialize_public_key()
-		pkt = Packet({"key": list(key_bytes)})
+		pkt = Packet({"key": bytes_to_base64(key_bytes)})
 		self.send(obj, pkt)
 		newPkt = self.read(obj)
-		obj_key = bytes(newPkt.get("key"))
+		obj_key = base64_to_bytes(newPkt.get("key"))
 		enc.derive_shared_key(load_public_key(obj_key))
 		self._encryptes[obj] = enc
 		return enc
@@ -67,31 +67,31 @@ class Server:
 
 
 	def read(self, socket_obj) -> Packet:
-		rawLen = socket_obj.recv(self.size_sync_p).decode("utf-8")
+		rawLen = recv_exact(socket_obj, self.size_sync_p).decode("utf-8")
 		if rawLen is None or rawLen == "":
 			return None
 		packetEnd = rawLen.rfind('}')
 
 		lenPacket = Packet.fromRaw(rawLen[:packetEnd + 1])["len"]
-		rawPacket = socket_obj.recv(lenPacket)
-		if rawPacket is None or lenPacket < 1:
+		rawPacket = recv_exact(socket_obj, lenPacket)
+		if not rawPacket or lenPacket < 1:
 			return None
 
 		return Packet.fromRaw(rawPacket)
 
 	def read_ecryptedpkt(self, socket_obj) -> EncryptedPacket:
 		enc = self.init_encrypt(socket_obj)
-		rawLen = socket_obj.recv(self.size_sync_p).decode("utf-8")
+		rawLen = recv_exact(socket_obj, self.size_sync_p).decode("utf-8")
 		if rawLen is None or rawLen == "":
 			return None
-		packetEnd = rawLen.rfind('}')
 
 		if rawLen.find(":encrypted") < 0:
 			return None
 
-		lenPacket = Packet.fromRaw(rawLen[:packetEnd + 1])["len"]
-		rawPacket = socket_obj.recv(lenPacket)
-		if rawPacket is None or lenPacket < 1:
+		payload = EncryptedPacket.extractPayload(rawLen)
+		lenPacket = EncryptedPacket.fromRaw(payload, enc)["len"]
+		rawPacket = recv_exact(socket_obj, lenPacket)
+		if not rawPacket or lenPacket < 1:
 			return None
 
 		return EncryptedPacket.fromRaw(rawPacket, enc)
@@ -116,8 +116,14 @@ class Server:
 	def stop_handler(self, th_id):
 		if not th_id in self._handlers:
 			return
-		self._handlers[th_id].join()
-		self._handlers.pop(th_id)
+		thread = self._handlers[th_id]
+		# Поток не может ждать (join) сам себя — это вызывает RuntimeError.
+		# Если stop_handler вызван из самого потока-обработчика (например, в ответ
+		# на packet.get("disconnect") или в блоке finally при выходе), просто
+		# убираем запись из реестра без join: поток и так сейчас завершается.
+		if thread is not threading.current_thread():
+			thread.join()
+		self._handlers.pop(th_id, None)
 
 	def stop(self):
 		self.started = False

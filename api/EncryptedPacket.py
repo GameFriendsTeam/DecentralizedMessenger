@@ -1,4 +1,5 @@
 from api.utils.Encryption import Encryption
+from api.utils.Other import bytes_to_base64, base64_to_bytes
 import json
 
 class EncryptedPacket:
@@ -14,12 +15,15 @@ class EncryptedPacket:
 
 	def set(self, key, value) -> None:
 		self.data[key] = value
+		self._cached_str = None
 
 	def getStr(self) -> str:
-		normal = json.dumps(self.data)
-		nonce, chipertext = self.encrypt.encrypt_message(normal)
-		encrypted = f"{list(nonce)}:{list(chipertext)}"
-		return encrypted
+		if not hasattr(self, "_cached_str") or self._cached_str is None:
+			normal = json.dumps(self.data)
+			nonce, ciphertext = self.encrypt.encrypt_message(normal.encode("utf-8"))
+
+			self._cached_str = json.dumps([bytes_to_base64(nonce), bytes_to_base64(ciphertext)])
+		return self._cached_str
 
 	def __str__(self) -> str:
 		return self.getStr()
@@ -34,9 +38,13 @@ class EncryptedPacket:
 		return self.data.get(name, None)
 
 	@staticmethod
-	def fromRaw(encrypted: str, encrypt: Encryption):
-		nonce, chipertext = encrypted.split()
-		normal = encrypt.decrypt_message(bytes(nonce), bytes(chipertext))
+	def fromRaw(encrypted, encrypt: Encryption):
+		if isinstance(encrypted, bytes):
+			encrypted = encrypted.decode("utf-8")
+		nonce_raw, ciphertext_raw = json.loads(encrypted)
+		nonce = base64_to_bytes(nonce_raw)
+		ciphertext = base64_to_bytes(ciphertext_raw)
+		normal = encrypt.decrypt_message(nonce, ciphertext)
 		return EncryptedPacket(json.loads(normal), encrypt)
 
 	@staticmethod
@@ -54,3 +62,9 @@ class EncryptedPacket:
 		packet_noise = f":{enc_alert}"+"b"*(remnant-1)
 
 		return str(packet0)+packet_noise
+
+	@staticmethod
+	def extractPayload(raw: str) -> str:
+		"""Отрезает паддинг ':encryptedbbb...' и возвращает чистый JSON-массив [nonce, ciphertext]."""
+		packetEnd = raw.rfind(']')
+		return raw[:packetEnd + 1]

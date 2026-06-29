@@ -59,7 +59,7 @@ class ClientManager:
 		if self.client and self.client.isStarted():
 			raise Exception("Client already running")
 
-		self.client = Client(addr, port, mssp, "Anon"+str(random.randint(1000, 9999)))
+		self.client = Client(addr, port, "Anon"+str(random.randint(1000, 9999)), mssp)
 		self.client.setThread(self._reader)
 
 		self.thread = threading.Thread(target=self.client.start, daemon=True)

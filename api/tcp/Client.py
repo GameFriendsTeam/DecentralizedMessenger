@@ -9,7 +9,7 @@ from api.utils.Encryption import Encryption, FileEncryption, SecureEncryption
 import socket, threading, time
 from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
-from api.utils.Other import load_public_key
+from api.utils.Other import load_public_key, recv_exact, base64_to_bytes, bytes_to_base64
 
 
 class Client:
@@ -63,30 +63,30 @@ class Client:
 
 
 	def read(self) -> Packet:
-		rawLen = self.socket.recv(self.size_sync_p).decode("utf-8")
+		rawLen = recv_exact(self.socket, self.size_sync_p).decode("utf-8")
 		if rawLen == None or rawLen == "": return None
 		packetEnd = rawLen.rfind('}')
 		rawLen = rawLen[:packetEnd + 1]
 
 		lenPacket = Packet.fromRaw(rawLen).get("len", 128)
-		rawPacket = self.socket.recv(lenPacket)
-		if (rawPacket == None or lenPacket < 1): return None
+		rawPacket = recv_exact(self.socket, lenPacket)
+		if not rawPacket or lenPacket < 1: return None
 
 		return Packet.fromRaw(rawPacket)
 
 	def read_ecryptedpkt(self) -> EncryptedPacket:
 		enc = self.srv_enc
-		rawLen = self.recv(self.size_sync_p).decode("utf-8")
+		rawLen = recv_exact(self.socket, self.size_sync_p).decode("utf-8")
 		if rawLen is None or rawLen == "":
 			return None
-		packetEnd = rawLen.rfind('}')
 
 		if rawLen.find(":encrypted") < 0:
 			return None
 
-		lenPacket = Packet.fromRaw(rawLen[:packetEnd + 1])["len"]
-		rawPacket = self.recv(lenPacket)
-		if rawPacket is None or lenPacket < 1:
+		payload = EncryptedPacket.extractPayload(rawLen)
+		lenPacket = EncryptedPacket.fromRaw(payload, enc)["len"]
+		rawPacket = recv_exact(self.socket, lenPacket)
+		if not rawPacket or lenPacket < 1:
 			return None
 
 		return EncryptedPacket.fromRaw(rawPacket, enc)
@@ -107,7 +107,7 @@ class Client:
 		nonce = encrypted[0]
 		ciphertext = encrypted[1]
 
-		decrypted = encript.decrypt_message(bytes(nonce), bytes(ciphertext)).decode("utf-8")
+		decrypted = encript.decrypt_message(base64_to_bytes(nonce), base64_to_bytes(ciphertext)).decode("utf-8")
 		return decrypted
 
 
@@ -121,9 +121,9 @@ class Client:
 		srv_key = self.read()
 		pr_k, pub_k = self.srv_enc.generate_keypair()
 		key_bytes = self.srv_enc.serialize_public_key()
-		pkt = Packet({"key": list(key_bytes)})
+		pkt = Packet({"key": bytes_to_base64(key_bytes)})
 		self.send(pkt)
-		self.srv_enc.derive_shared_key(load_public_key(bytes(srv_key.get("key"))))
+		self.srv_enc.derive_shared_key(load_public_key(base64_to_bytes(srv_key.get("key"))))
 
 		self.started = True
 		print("Connected!")
@@ -201,9 +201,9 @@ class Client:
 
 		packet_data = {
 			"type": "key_exchange",
-			"x25519_pub": list(my_x25519_pub),
-			"ed25519_pub": list(my_ed25519_pub),
-			"signature": list(signature),
+			"x25519_pub": bytes_to_base64(my_x25519_pub),
+			"ed25519_pub": bytes_to_base64(my_ed25519_pub),
+			"signature": bytes_to_base64(signature),
 			"to": to,
 			"from": self.getUsername()
 		}
@@ -224,9 +224,9 @@ class Client:
 		if not packet_with_key:
 			print("Packet with key not given")
 			return None
-		peer_x25519_pub = bytes(packet_with_key["x25519_pub"])
-		peer_ed25519_pub = bytes(packet_with_key["ed25519_pub"])
-		peer_sig = bytes(packet_with_key["signature"])
+		peer_x25519_pub = base64_to_bytes(packet_with_key["x25519_pub"])
+		peer_ed25519_pub = base64_to_bytes(packet_with_key["ed25519_pub"])
+		peer_sig = base64_to_bytes(packet_with_key["signature"])
 
 		if not encript.verify_signature(
 			peer_x25519_pub + self.getUsername().encode("utf-8"),
