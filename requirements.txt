@@ -1,0 +1,6 @@
+cryptography
+pyaudio
+fastapi
+uvicorn
+numpy
+jinja2
