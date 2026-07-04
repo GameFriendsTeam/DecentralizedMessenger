@@ -1,4 +1,5 @@
 import socket
+from typing import Optional
 import threading, uuid
 from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
@@ -42,15 +43,18 @@ class Server:
 		key_bytes = enc.serialize_public_key()
 		pkt = Packet({"key": bytes_to_base64(key_bytes)})
 		self.send(obj, pkt)
-		newPkt = self.read(obj)
+		newPkt, _ = self.read(obj)
 		obj_key = base64_to_bytes(newPkt.get("key"))
 		enc.derive_shared_key(load_public_key(obj_key))
 		self._encryptes[obj] = enc
 		return enc
 
 
-	def send(self, socket_obj, packet: Packet):
+	def send(self, socket_obj, packet: Packet, encrypt: bool = False):
 		packet_len = len(packet)
+		if encrypt:
+			self.send_ecryptedpkt(socket_obj, packet.getAll())
+			return
 
 		lenPacket = Packet.staticPacket({"len": packet_len}, self.size_sync_p)
 		socket_obj.send(lenPacket.encode("utf-8"))
@@ -66,22 +70,32 @@ class Server:
 		socket_obj.send(bytes(packet))
 
 
-	def read(self, socket_obj) -> Packet:
+	def read(self, socket_obj) -> tuple[Packet, bool]:
+		"""
+		Read packet from socket_obj
+		Returns:
+			Tuple[Packet, bool]
+			  - Packet - read packet
+			  - bool - is encrypted
+		"""
 		rawLen = recv_exact(socket_obj, self.size_sync_p).decode("utf-8")
 		if rawLen is None or rawLen == "":
-			return None
+			return None, False
 		packetEnd = rawLen.rfind('}')
+		if packetEnd < 0:
+			return self.read_ecryptedpkt(socket_obj, rawLen), True
 
 		lenPacket = Packet.fromRaw(rawLen[:packetEnd + 1])["len"]
 		rawPacket = recv_exact(socket_obj, lenPacket)
 		if not rawPacket or lenPacket < 1:
-			return None
+			return None, False
 
-		return Packet.fromRaw(rawPacket)
+		return Packet.fromRaw(rawPacket), False
 
-	def read_ecryptedpkt(self, socket_obj) -> EncryptedPacket:
+	def read_ecryptedpkt(self, socket_obj, rawLen: Optional[str] = None) -> EncryptedPacket:
 		enc = self.init_encrypt(socket_obj)
-		rawLen = recv_exact(socket_obj, self.size_sync_p).decode("utf-8")
+		if not rawLen:
+			rawLen = recv_exact(socket_obj, self.size_sync_p).decode("utf-8")
 		if rawLen is None or rawLen == "":
 			return None
 
@@ -142,12 +156,12 @@ class Server:
 		def _handle(client):
 			while client.isStarted():
 				try:
-					s_in = client.read()
+					s_in, _enc = client.read()
 					if s_in is not None and s_in.get('to', 'server') == client.getUsername():
 						print(f"{s_in.get('from', 'unknown')}: {s_in.get('content', '[NULL]')}\n")
 					else:
 						try:
-							client.transmit(s_in)
+							client.transmit(s_in, _enc)
 						except Exception as ex:
 							print(ex)
 				except Exception as ex:

@@ -1,10 +1,11 @@
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.asymmetric import x25519, ed25519
+from typing import Optional
+from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidSignature
 from cryptography.fernet import Fernet
+from api.commands.CommandManager import CommandManager
 from api.tcp.Server import Server
 from api.tcp.Client import Client
 from api.udp.UDPClient import UDPClient
@@ -13,7 +14,7 @@ from api.Packet import Packet
 from api.utils.Encryption import Encryption, FileEncryption, SecureEncryption
 from api.utils.network import find_servers_local, find_servers_global, ScanStatus
 from pathlib import Path
-from api.utils.Other import load_public_key, Config, bytes_to_base64, base64_to_bytes
+from api.utils.Other import get_all_commands, load_public_key, Config, bytes_to_base64, base64_to_bytes
 from api.utils.Audio import Audio
 import json, threading, random, uuid
 import logging
@@ -24,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 pid_uuid = str(uuid.uuid4())
-MAX_SIZE_SYNC_PACKET = 64
+MAX_SIZE_SYNC_PACKET = 256
 
 # default nickname used by background tasks when not set
 nickname = ""
@@ -60,50 +61,50 @@ def backgroud_task(server):
 nn_ls = {}
 nn_conn = {}
 
-def handle_client_4srv(server, client, addr, th_id):
+def handle_client_4srv(server: Server, client, addr, th_id):
 	global nn_ls
 	addr_str = f"{addr[0]}:{addr[1]}"
 	try:
 		server.init_encrypt(client)
-		nn = server.read(client)["name"]
+		nn = server.read(client)[0]["name"]
 		print(f"Client({nn}) connected!")
 		nn_ls[addr_str] = nn
 		nn_conn[nn] = client
 
 		while server.isStarted() and (th_id in server._handlers):
-			packet = server.read(client)
+			packet, _enc = server.read(client)
 			if not packet:
 				continue
 
 			if packet.get("ping", 0) > 0:
-				server.send(client, Packet({"ok": True}))
+				server.send(client, Packet({"ok": True}), _enc)
 
 			elif packet.get("stopsrv"):
 				if addr[0] != "127.0.0.1":
 					server.send(client, Packet({"ok": False, "error": "You are not host"}))
 					continue
-				server.send(client, Packet({"ok": True}))
+				server.send(client, Packet({"ok": True}), _enc)
 				server.stop()
 
 			elif packet.get("is_online"):
 				test_nn = packet.get("is_online")
 
 				if test_nn in nn_conn:
-					server.send(client, Packet({"online": True}))
+					server.send(client, Packet({"online": True}), _enc)
 
 				else:
 					if server.getInternalClient() == None:
-						server.send(client, Packet({"online": False}))
+						server.send(client, Packet({"online": False}), _enc)
 						continue
 
-					server.getInternalClient().send(Packet({"is_online": test_nn}))
-					status = server.getInternalClient().read()
-					server.send(client, status)
+					server.getInternalClient().send(Packet({"is_online": test_nn}), _enc)
+					status, _enc = server.getInternalClient().read()
+					server.send(client, status, _enc)
 
 			elif packet.get("name", False):
 				new_name = packet.get("name", "")
 				if new_name == "":
-					server.send(client, Packet({"ok": False}))
+					server.send(client, Packet({"ok": False}), _enc)
 					continue
 
 				old_name = nn
@@ -116,14 +117,14 @@ def handle_client_4srv(server, client, addr, th_id):
 				nn_conn.pop(old_name, None)
 
 				print(f"User change name: {old_name} -> {nn}")
-				server.send(client, Packet({"ok": True}))
+				server.send(client, Packet({"ok": True}), _enc)
 
 			elif packet.get("get_address"):
 				test_nn = packet.get("get_address")
 				if test_nn in nn_conn:
-					server.send(client, Packet({"address": nn_conn[test_nn]}))
+					server.send(client, Packet({"address": nn_conn[test_nn]}), _enc)
 				else:
-					server.send(client, Packet({"address": False}))
+					server.send(client, Packet({"address": False}), _enc)
 
 			elif packet.get("disconnect"):
 				server.stop_handler(th_id)
@@ -142,8 +143,9 @@ def handle_client_4srv(server, client, addr, th_id):
 					continue
 
 				conn = nn_conn.get(getter, None)
+				has_enc = True if server._encryptes.get(conn, None) else False
 				if conn != None:
-					server.send(conn, packet)
+					server.send(conn, packet, has_enc)
 					continue
 
 				if packet.get("transmit", False):
@@ -152,7 +154,7 @@ def handle_client_4srv(server, client, addr, th_id):
 				if server.getInternalClient() == None:
 					continue
 
-				server.getInternalClient().send(packet)
+				server.getInternalClient().send(packet, True)
 
 	except ConnectionError as e:
 		logging.debug("ConnectionError in server handler: %s", e)
@@ -169,205 +171,25 @@ def handle_client_4srv(server, client, addr, th_id):
 		client.close()
 		server.stop_handler(th_id)
 
+cmdm = None
+current_getter = "server"
+def handle_client_4clnt(client: Client):
+	global cmdm
+	from api.commands.client._HelpCMD import HelpCMD
 
-def handle_client_4clnt(client):
-	current_getter = "server"
+	cmdm = CommandManager()
+	cmdm.registerCMDs(get_all_commands())
+	cmdm.registerCMD("help", HelpCMD())
+
 	while client.isStarted():
 		msg = input("msg: ")
-		if msg == "/q": client.stop()
-		elif msg == "/cc":
-			if (client.checkConnection(5)): print("Ok!")
-			else: print("Error!")
-
-		elif msg == "/to":
-			to = input("Enter recipient's nickname(empty for server): ")
-			if to == "":
-				current_getter = "server"
-
-			client.send(Packet({"is_online": to}))
-			status = client.read()
-			print(status)
-
-			if not status.get("online", False):
-				print(f"\"{to}\" is not online")
-				continue
-
-			current_getter = to
-
-		elif msg == "/read":
-			active = True
-			print("Q for exit")
-
-			try:
-				while active:
-					packet = client.read()
-					sender, content = packet.get("from", "[unknown]"), packet.get("content", "[ERROR]")
-
-					if content == "Encrypted":
-						encript = client.get_encript(current_getter)
-						if not encript:
-							continue
-						nonce = packet.get("encrypted", [])[0]
-						ciphertext = packet.get("encrypted", [])[1]
-
-						decripted = encript.decrypt_message(base64_to_bytes(nonce), base64_to_bytes(ciphertext)).decode("utf-8")
-						print(f"{sender}: {decripted}")
-						continue
-
-					elif content == "/sf":
-						encript = client.get_encript(current_getter)
-						if not encript:
-							continue
-						pkt0 = packet
-						pkt1 = client.read()
-						if pkt0.get("type", None) != "key2file":
-							pkt0 = pkt1
-							pkt1 = client.read()
-						if pkt1.get("type", None) != "filedata":
-							print("Incorrect data")
-							continue
-
-						encrypted = pkt0.get("encrypted")
-						key = bytes(encript.decrypt_message(base64_to_bytes(encrypted[0]), base64_to_bytes(encrypted[1])))
-
-						fe = FileEncryption(key)
-						decrypted = fe.decrypt(base64_to_bytes(pkt1.get("encrypted")))
-
-						name_enc = pkt1.get("filename")
-						filename = encript.decrypt_message(base64_to_bytes(name_enc[0]), base64_to_bytes(name_enc[1])).decode("utf-8")
-
-						with open(filename, "wb") as f:
-							f.write(decrypted)
-						continue
-
-					print(f"{sender}: {content}")
-			except KeyboardInterrupt:
-				active = False
-
-		elif msg == "/sk": # sync keys
-			encript = client.get_encript(current_getter)
-			if encript:
-				trusted = encript.get_trusted_peer_key(current_getter)
-				if trusted:
-					print("No verification needed")
-					if "x25519_public" in trusted:
-						peer_x25519_key = x25519.X25519PublicKey.from_public_bytes(
-							trusted["x25519_public"]
-						)
-						encript.generate_keypair()  # Генерируем новые сессионные ключи
-						encript.derive_shared_key(peer_x25519_key)
-						print("✅ Защищенный канал восстановлен!")
-						continue
-
-			#print("1. for read\n2. for send")
-			#mode = int(input("Select mode: "))
-
-			print("Sending key...")
-			client.send_key(current_getter)
-
-			print("Reading key packet...")
-			client.read_key(current_getter)
-
-		elif msg == "/sf":
-			file_path = ""
-			try:
-				import tkinter as tk
-				from tkinter import filedialog
-				tk.Tk().withdraw()
-
-				file_path = filedialog.askopenfilename(
-					initialdir="/",
-					title="Select a file",
-					filetypes=(("Text files", "*.txt"), ("All files", "*.*"))
-				)
-
-			except Exception as e:
-				print(e)
-				print("Enter file path manually.")
-				file_path = input("File path: ")
-
-			if file_path == "":
-				continue
-
-			# get current encryption object
-			encript = client.get_encript(current_getter)
-			if not encript:
-				print("Encryption is not activated")
-				continue
-
-			fe = FileEncryption()
-			key = fe.getKey()
-			ed = fe.encrypt(file_path)
-			path_obj = Path(file_path)
-			
-			with open(str(path_obj.with_suffix(".key")), "wb") as f:
-				f.write(key)
-
-			nonce, ciphertext = encript.encrypt_message(key)
-			client.transmit(Packet({
-				"content": "/sf",
-				"type": "key2file",
-				"from": client.getUsername(),
-				"to": current_getter,
-				"encrypted": [bytes_to_base64(nonce), bytes_to_base64(ciphertext)]
-			}))
-			status0 = client.read()
-
-			nonce, ciphertext = encript.encrypt_message(path_obj.name.encode("utf-8"))
-			client.transmit(Packet({
-				"content": "/sf",
-				"type": "filedata",
-				"from": client.getUsername(),
-				"to": current_getter,
-				"encrypted": bytes_to_base64(ed),
-				"filename": [bytes_to_base64(nonce), bytes_to_base64(ciphertext)]
-			}))
-			status1 = client.read()
-			print(status0)
-			print(status1)
-
-		elif msg == "/voice":
-			encript = client.get_encript(current_getter)
-			if not encript:
-				print("Encryption not initialisated")
-				continue
-
-			client.send(Packet({"get_address": current_getter}))
-			addr_pkt = client.read()
-			target_addr = addr_pkt.get("address")
-			if not target_addr:
-				print(f"{current_getter} is not online")
-				continue
-
-			chunk = 1024
-			channels = 1
-			port = 4444
-
-			audio = Audio(channels, chunk, 16000)
-			udp_s = UDPServer(port, MAX_SIZE_SYNC_PACKET)
-			udp_c = UDPClient(target_addr, port, MAX_SIZE_SYNC_PACKET)
-
-			def udp_handle_c(udp_clnt):
-				while udp_clnt.isStarted():
-					for nda in audio.listen(1):
-						data = nda.tobytes()
-						nonce, ciphertext = encript.encrypt_message(data)
-						to_send = f"{bytes_to_base64(nonce)}:{bytes_to_base64(ciphertext)}".encode("utf-8")
-						udp_clnt.send(target_addr, port, to_send)
-
-			def udp_handle_s(udp_srv, srv_socket):
-				while udp_srv.isStarted():
-					pkt, addr = udp_srv.read(chunk*channels*2)
-					data = pkt.decode("utf-8").split(':')
-					nonce, ciphertext = data[0], data[1]
-					decoded_data = encript.decrypt_message(base64_to_bytes(nonce), base64_to_bytes(ciphertext)).decode("utf-8")
-					to_speak = np.frombuffer(decoded_data, dtype='<u2')
-					audio.speak(to_speak)
-
-			udp_c.setThread(udp_handle_c)
-			threading.Thread(target=udp_c.start, daemon=True).start()
-			udp_s.setClientHandler(udp_handle_s)
-			threading.Thread(target=udp_s.start, daemon=True).start()
+		if msg.startswith("/"):
+			cmd = msg.lower().replace("/", "").split(" ")[0]
+			mb_cmd = cmdm.getCMD(cmd, None)
+			if mb_cmd:
+				mb_cmd.execute(client)
+			else:
+				print("Command doesn't exists!")
 
 		else:
 			encript = client.get_encript(current_getter)
@@ -379,13 +201,13 @@ def handle_client_4clnt(client):
 					"from": client.getUsername(),
 					"to": current_getter,
 					"encrypted": [bytes_to_base64(nonce), bytes_to_base64(ciphertext)]
-				}))
+				}), True)
 			else:
 				client.transmit(Packet({
 					"content": msg,
 					"from": client.getUsername(),
 					"to": current_getter
-				}))
+				}), True)
 
 
 def main():
@@ -443,7 +265,8 @@ def main():
 			target = config.get("srvAddr", None)
 		if not target:
 			target = input("Enter target addr: ")
-			config.set("srvAddr", target)
+			if use_cnf:
+				config.set("srvAddr", target)
 
 		port = None
 		if use_cnf:
@@ -461,7 +284,8 @@ def main():
 			nickname = input("Enter you're name: ")
 			if use_cnf:
 				config.set("nickname", nickname)
-		config.save()
+		if use_cnf:
+			config.save()
 
 		client = Client(target, port, nickname, MAX_SIZE_SYNC_PACKET)
 		client.setThread(handle_client_4clnt)

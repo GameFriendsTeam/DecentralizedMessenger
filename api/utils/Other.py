@@ -1,6 +1,8 @@
+from importlib.util import module_from_spec, spec_from_file_location
+import inspect
 import json
+from pathlib import Path
 import socket as socket_module
-
 from cryptography.hazmat.primitives.asymmetric import x25519
 import os
 
@@ -92,3 +94,25 @@ def bytes_to_base64(data: bytes) -> str:
 def base64_to_bytes(data: str) -> bytes:
 	import base64
 	return base64.b64decode(data.encode("utf-8"))
+
+
+def get_all_commands() -> dict:
+	s = os.sep
+	path_to_cmds = f"{os.getcwd()}{s}api{s}commands{s}client{s}"
+	cmds = {}
+	for file in Path(path_to_cmds).glob("*.py"):
+		if file.name.startswith("_"):
+			continue
+
+		cmd_name = file.name.lower().replace("cmd.py", "")
+
+		spec = spec_from_file_location(file.stem, file)
+
+		module = module_from_spec(spec)
+
+		spec.loader.exec_module(module)
+		for name, cls in inspect.getmembers(module, inspect.isclass):
+			if cls.__module__ == module.__name__:
+				cmds[cmd_name] = cls()
+	return cmds
+			

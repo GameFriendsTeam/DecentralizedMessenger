@@ -1,8 +1,9 @@
+from api.Packet import Packet
 from api.utils.Encryption import Encryption
 from api.utils.Other import bytes_to_base64, base64_to_bytes
 import json
 
-class EncryptedPacket:
+class EncryptedPacket(Packet):
 	def __init__(self, data: dict, encrypt: Encryption):
 		self.data = data
 		self.encrypt = encrypt

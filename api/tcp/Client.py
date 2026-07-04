@@ -1,3 +1,4 @@
+from typing import Optional
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import x25519, ed25519
 from cryptography.hazmat.primitives import serialization, hashes
@@ -5,6 +6,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidSignature
 from cryptography.fernet import Fernet
+from api.commands.CommandSender import CommandSender
 from api.utils.Encryption import Encryption, FileEncryption, SecureEncryption
 import socket, threading, time
 from api.Packet import Packet
@@ -12,7 +14,7 @@ from api.EncryptedPacket import EncryptedPacket
 from api.utils.Other import load_public_key, recv_exact, base64_to_bytes, bytes_to_base64
 
 
-class Client:
+class Client(CommandSender):
 	serverClient: bool
 	started: bool = False
 	socket: socket.socket
@@ -36,7 +38,7 @@ class Client:
 	def sendUsername(self):
 		if not self.started or self.username == "": return
 		packet = Packet({"name":self.username})
-		self.send(packet)
+		self.send(packet, True)
 
 
 	def setUsername(self, username):
@@ -45,38 +47,51 @@ class Client:
 		self.sendUsername()
 
 
-	def send(self, packet: Packet):
+	def send(self, packet: Packet, encrypt: bool = False):
+		if encrypt:
+			self.send_ecryptedpkt(packet.getAll())
+			return
 		packet_len = len(packet)
 
 		lenPacket = Packet.staticPacket({"len": packet_len}, self.size_sync_p)
 		self.socket.send(str(lenPacket).encode("utf-8"))
 		self.socket.send(bytes(packet))
 
-	def send_ecryptedpkt(self, socket_obj, data: dict):
+	def send_ecryptedpkt(self, data: dict):
 		enc = self.srv_enc
 		packet = EncryptedPacket(data, enc)
 		packet_len = len(packet)
 
 		lenPacket = EncryptedPacket.staticPacket({"len": packet_len}, self.size_sync_p, enc)
-		socket_obj.send(lenPacket.encode("utf-8"))
-		socket_obj.send(bytes(packet))
+		self.socket.send(lenPacket.encode("utf-8"))
+		self.socket.send(bytes(packet))
 
 
-	def read(self) -> Packet:
+	def read(self) -> tuple[Packet, bool]:
+		"""
+		Read packet
+		Returns:
+			Tuple[Packet, bool]
+			  - Packet - read packet
+			  - bool - is encrypted
+		"""
 		rawLen = recv_exact(self.socket, self.size_sync_p).decode("utf-8")
-		if rawLen == None or rawLen == "": return None
+		if rawLen == None or rawLen == "": return None, False
 		packetEnd = rawLen.rfind('}')
+		if packetEnd < 0:
+			return self.read_ecryptedpkt(rawLen), True
 		rawLen = rawLen[:packetEnd + 1]
 
 		lenPacket = Packet.fromRaw(rawLen).get("len", 128)
 		rawPacket = recv_exact(self.socket, lenPacket)
-		if not rawPacket or lenPacket < 1: return None
+		if not rawPacket or lenPacket < 1: return None, False
 
-		return Packet.fromRaw(rawPacket)
+		return Packet.fromRaw(rawPacket), False
 
-	def read_ecryptedpkt(self) -> EncryptedPacket:
+	def read_ecryptedpkt(self, rawLen: Optional[str] = None) -> EncryptedPacket:
 		enc = self.srv_enc
-		rawLen = recv_exact(self.socket, self.size_sync_p).decode("utf-8")
+		if not rawLen:
+			rawLen = recv_exact(self.socket, self.size_sync_p).decode("utf-8")
 		if rawLen is None or rawLen == "":
 			return None
 
@@ -118,7 +133,7 @@ class Client:
 	def start(self):
 		self.socket.connect((self.targetAddr, self.targetPort))
 
-		srv_key = self.read()
+		srv_key, _ = self.read()
 		pr_k, pub_k = self.srv_enc.generate_keypair()
 		key_bytes = self.srv_enc.serialize_public_key()
 		pkt = Packet({"key": bytes_to_base64(key_bytes)})
@@ -150,10 +165,10 @@ class Client:
 	def isStarted(self): return self.started
 
 
-	def transmit(self, packet: Packet):
+	def transmit(self, packet: Packet, encrypt: bool = False):
 		if (self.socket == None and not self.started): raise Exception("Client socket is closed")
 		packet.set("transmit", True)
-		self.send(packet)
+		self.send(packet, encrypt)
 		
 	def checkConnection(self, timeout: int) -> bool:
 		"""Check connection by sending ping and waiting up to timeout seconds."""
@@ -216,7 +231,7 @@ class Client:
 		packet_with_key = None
 
 		while not packet_with_key:
-			packet = self.read()
+			packet, _ = self.read()
 			print(packet)
 			if packet.get("signature"):
 				packet_with_key = packet
