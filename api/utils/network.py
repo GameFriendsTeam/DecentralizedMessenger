@@ -5,7 +5,7 @@ import subprocess
 import platform
 import re
 from queue import Queue
-from typing import List, Dict, Optional, Callable
+from typing import List, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 

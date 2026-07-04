@@ -1,24 +1,11 @@
-from typing import Optional
-from cryptography.hazmat.primitives.asymmetric import x25519
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.exceptions import InvalidSignature
-from cryptography.fernet import Fernet
 from api.commands.CommandManager import CommandManager
 from api.tcp.Server import Server
 from api.tcp.Client import Client
-from api.udp.UDPClient import UDPClient
-from api.udp.UDPServer import UDPServer
 from api.Packet import Packet
-from api.utils.Encryption import Encryption, FileEncryption, SecureEncryption
 from api.utils.network import find_servers_local, find_servers_global, ScanStatus
-from pathlib import Path
-from api.utils.Other import get_all_commands, load_public_key, Config, bytes_to_base64, base64_to_bytes
-from api.utils.Audio import Audio
+from api.utils.Other import get_all_commands, Config, bytes_to_base64
 import json, threading, random, uuid
 import logging
-import numpy as np
 
 # basic logging
 logging.basicConfig(level=logging.INFO)

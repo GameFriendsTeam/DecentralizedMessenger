@@ -1,5 +1,5 @@
 import socket
-import threading, uuid
+import threading
 
 
 class UDPServer:

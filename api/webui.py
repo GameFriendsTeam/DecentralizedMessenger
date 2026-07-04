@@ -8,7 +8,6 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import colorlog
 
 from api.tcp.Client import Client
 from api.Packet import Packet

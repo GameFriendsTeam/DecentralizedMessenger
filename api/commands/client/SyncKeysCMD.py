@@ -1,4 +1,3 @@
-from api.Packet import Packet
 from api.commands.Command import Command
 from api.commands.CommandSender import CommandSender
 from cryptography.hazmat.primitives.asymmetric import x25519

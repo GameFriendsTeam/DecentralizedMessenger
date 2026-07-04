@@ -1,5 +1,4 @@
-import socket, threading, signal, time
-from api.Packet import Packet
+import socket
 
 
 class UDPClient:

@@ -1,14 +1,8 @@
 from typing import Optional
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.asymmetric import x25519, ed25519
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.exceptions import InvalidSignature
-from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.asymmetric import x25519
 from api.commands.CommandSender import CommandSender
-from api.utils.Encryption import Encryption, FileEncryption, SecureEncryption
-import socket, threading, time
+from api.utils.Encryption import Encryption, SecureEncryption
+import socket
 from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
 from api.utils.Other import load_public_key, recv_exact, base64_to_bytes, bytes_to_base64
