@@ -1,8 +1,12 @@
+import asyncio
 from importlib.util import module_from_spec, spec_from_file_location
 import inspect
+import ipaddress
 import json
 from pathlib import Path
 import socket as socket_module
+import threading
+from typing import Optional
 from cryptography.hazmat.primitives.asymmetric import x25519
 import os
 
@@ -13,29 +17,6 @@ def format_bytes(size):
 			return f"{size:.2f} {unit}"
 		size /= 1024
 	return f"{size:.2f} EB"
-
-
-def recv_exact(sock: socket_module.socket, n: int) -> bytes:
-	"""Читает из TCP-сокета ровно n байт, дочитывая в цикле.
-
-	TCP не гарантирует, что recv(n) вернёт все n байт за один вызов —
-	данные могут прийти по частям (особенно на не-loopback соединениях
-	или при больших пакетах). Без этого возможна потеря/обрезка данных.
-
-	Возвращает b"" если соединение было закрыто до получения n байт.
-	"""
-	if n <= 0:
-		return b""
-	chunks = []
-	remaining = n
-	while remaining > 0:
-		chunk = sock.recv(remaining)
-		if not chunk:
-			# Соединение закрыто удалённой стороной
-			return b""
-		chunks.append(chunk)
-		remaining -= len(chunk)
-	return b"".join(chunks)
 
 
 def load_public_key(data: bytes):
@@ -115,4 +96,33 @@ def get_all_commands() -> dict:
 			if cls.__module__ == module.__name__:
 				cmds[cmd_name] = cls()
 	return cmds
-			
+
+
+ctxs: dict[str, asyncio.AbstractEventLoop] = {}
+_threads: dict[str, threading.Thread] = {}
+def get_async_ctx(key) -> asyncio.AbstractEventLoop:
+	if key not in ctxs:
+		ctxs[key] = asyncio.new_event_loop()
+		_threads[key] = threading.Thread(target=ctxs[key].run_forever, daemon=True)
+		_threads[key].start()
+	return ctxs[key]
+
+
+def run_async_ctx(loop: asyncio.AbstractEventLoop, coro, timeout: Optional[int] = 5.0):
+	return asyncio.run_coroutine_threadsafe(coro, loop).result(timeout=timeout)
+
+
+def rm_async_ctx(key) -> None:
+	if key in ctxs and key in _threads:
+		ctxs[key].stop()
+		_threads.get(key).stop()
+		del ctxs[key]
+		del _threads[key]
+
+
+def is_valid_ip(ip_str):
+    try:
+        ipaddress.ip_address(ip_str)
+        return True
+    except ValueError:
+        return False

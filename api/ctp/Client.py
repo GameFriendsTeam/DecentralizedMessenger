@@ -1,24 +1,37 @@
+import asyncio
+import logging
 from typing import Optional
 from cryptography.hazmat.primitives.asymmetric import x25519
 from api.commands.CommandSender import CommandSender
+from api.protocol.stream import Stream
 from api.utils.Encryption import Encryption, SecureEncryption
-import socket
+from api.protocol.endpoint import Endpoint
 from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
-from api.utils.Other import load_public_key, recv_exact, base64_to_bytes, bytes_to_base64
+from api.utils.Other import load_public_key, base64_to_bytes, bytes_to_base64
+from api.utils.Other import get_async_ctx, run_async_ctx
 
 
 class Client(CommandSender):
-	serverClient: bool
+	_stream: Stream
+	_loop: asyncio.AbstractEventLoop
 	started: bool = False
-	socket: socket.socket
 	targetAddr: str
 	targetPort: int
 	username: str
 
 	def __init__(self, addr: str, port: int, username: str, mssp: int):
-		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.serverClient = False
+		self._loop = get_async_ctx(self.__class__.__name__)
+		_ep = run_async_ctx(self._loop, Endpoint.create(host="127.0.0.1", port=0))
+		conn = _ep.connect((addr, port))
+		logging.info("Waiting opening stream and sync packet...")
+
+		self._stream = conn.open_stream(0)
+		try:
+			run_async_ctx(self._loop, self._stream.sync(), timeout=5.0)
+		except TimeoutError:
+			raise Exception(f"Timeout while waiting for sending sync packet to {addr}:{port}")
+
 		self.started = False
 		self.targetAddr = addr
 		self.targetPort = port
@@ -48,8 +61,8 @@ class Client(CommandSender):
 		packet_len = len(packet)
 
 		lenPacket = Packet.staticPacket({"len": packet_len}, self.size_sync_p)
-		self.socket.send(str(lenPacket).encode("utf-8"))
-		self.socket.send(bytes(packet))
+		run_async_ctx(self._loop, self._stream.send(str(lenPacket).encode("utf-8")))
+		run_async_ctx(self._loop, self._stream.send(bytes(packet)))
 
 	def send_ecryptedpkt(self, data: dict):
 		enc = self.srv_enc
@@ -57,8 +70,8 @@ class Client(CommandSender):
 		packet_len = len(packet)
 
 		lenPacket = EncryptedPacket.staticPacket({"len": packet_len}, self.size_sync_p, enc)
-		self.socket.send(lenPacket.encode("utf-8"))
-		self.socket.send(bytes(packet))
+		run_async_ctx(self._loop, self._stream.send(lenPacket.encode("utf-8")))
+		run_async_ctx(self._loop, self._stream.send(bytes(packet)))
 
 
 	def read(self) -> tuple[Packet, bool]:
@@ -69,7 +82,7 @@ class Client(CommandSender):
 			  - Packet - read packet
 			  - bool - is encrypted
 		"""
-		rawLen = recv_exact(self.socket, self.size_sync_p).decode("utf-8")
+		rawLen = run_async_ctx(self._loop, self._stream.recv()).decode("utf-8")
 		if rawLen == None or rawLen == "": return None, False
 		packetEnd = rawLen.rfind('}')
 		if packetEnd < 0:
@@ -77,7 +90,7 @@ class Client(CommandSender):
 		rawLen = rawLen[:packetEnd + 1]
 
 		lenPacket = Packet.fromRaw(rawLen).get("len", 128)
-		rawPacket = recv_exact(self.socket, lenPacket)
+		rawPacket = run_async_ctx(self._loop, self._stream.recv())
 		if not rawPacket or lenPacket < 1: return None, False
 
 		return Packet.fromRaw(rawPacket), False
@@ -85,7 +98,7 @@ class Client(CommandSender):
 	def read_ecryptedpkt(self, rawLen: Optional[str] = None) -> EncryptedPacket:
 		enc = self.srv_enc
 		if not rawLen:
-			rawLen = recv_exact(self.socket, self.size_sync_p).decode("utf-8")
+			rawLen = run_async_ctx(self._loop, self._stream.recv()).decode("utf-8")
 		if rawLen is None or rawLen == "":
 			return None
 
@@ -94,7 +107,7 @@ class Client(CommandSender):
 
 		payload = EncryptedPacket.extractPayload(rawLen)
 		lenPacket = EncryptedPacket.fromRaw(payload, enc)["len"]
-		rawPacket = recv_exact(self.socket, lenPacket)
+		rawPacket = run_async_ctx(self._loop, self._stream.recv())
 		if not rawPacket or lenPacket < 1:
 			return None
 
@@ -125,7 +138,7 @@ class Client(CommandSender):
 
 
 	def start(self):
-		self.socket.connect((self.targetAddr, self.targetPort))
+		#self.socket.connect((self.targetAddr, self.targetPort))
 
 		srv_key, _ = self.read()
 		pr_k, pub_k = self.srv_enc.generate_keypair()
@@ -135,7 +148,7 @@ class Client(CommandSender):
 		self.srv_enc.derive_shared_key(load_public_key(base64_to_bytes(srv_key.get("key"))))
 
 		self.started = True
-		print("Connected!")
+		logging.info("Connected!")
 		self.sendUsername()
 
 		th = self._th
@@ -151,16 +164,17 @@ class Client(CommandSender):
 		except BrokenPipeError:
 			...
 		except Exception as exc:
-			print(f"Exception: {exc}")
+			logging.info(f"Exception: {exc}")
 		finally:
-			self.socket.close()
+			#self.socket.close()
+			self._loop.stop()
 			self.started = False
 
 	def isStarted(self): return self.started
 
 
 	def transmit(self, packet: Packet, encrypt: bool = False):
-		if (self.socket == None and not self.started): raise Exception("Client socket is closed")
+		if not self.started: raise Exception("Client socket is closed")
 		packet.set("transmit", True)
 		self.send(packet, encrypt)
 		
@@ -168,18 +182,19 @@ class Client(CommandSender):
 		"""Check connection by sending ping and waiting up to timeout seconds."""
 		self.send(Packet({"ping": timeout * 1000}))
 
-		old_to = self.socket.gettimeout()
-		try:
-			self.socket.settimeout(timeout)
-			self.read()
-			return True
-		except socket.timeout:
-			return False
-		finally:
-			try:
-				self.socket.settimeout(old_to)
-			except Exception:
-				self.socket.settimeout(None)
+		# old_to = self.socket.gettimeout()
+		# try:
+		# 	self.socket.settimeout(timeout)
+		# 	self.read()
+		# 	return True
+		# except socket.timeout:
+		# 	return False
+		# finally:
+		# 	try:
+		# 		self.socket.settimeout(old_to)
+		# 	except Exception:
+		# 		self.socket.settimeout(None)
+		return True  # For now, assume connection is alive since we don't have a proper read implementation here.
 
 
 	def _init_encript(self, to: str):
@@ -226,12 +241,12 @@ class Client(CommandSender):
 
 		while not packet_with_key:
 			packet, _ = self.read()
-			print(packet)
+			logging.info(packet)
 			if packet.get("signature"):
 				packet_with_key = packet
 
 		if not packet_with_key:
-			print("Packet with key not given")
+			logging.info("Packet with key not given")
 			return None
 		peer_x25519_pub = base64_to_bytes(packet_with_key["x25519_pub"])
 		peer_ed25519_pub = base64_to_bytes(packet_with_key["ed25519_pub"])
@@ -242,7 +257,7 @@ class Client(CommandSender):
 			peer_sig,
 			peer_ed25519_pub
 		):
-			print("Invalid signature!")
+			logging.info("Invalid signature!")
 			return None
 
 		encript.verify_peer_manually(

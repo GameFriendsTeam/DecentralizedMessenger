@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from api.tcp.Client import Client
+from api.ctp.Client import Client
 from api.Packet import Packet
 from api.utils.Encryption import Encryption
 from api.utils.Other import load_public_key
