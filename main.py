@@ -1,3 +1,5 @@
+import argparse
+
 from api.commands.CommandManager import CommandManager
 from api.ctp.Server import Server
 from api.ctp.Client import Client
@@ -167,13 +169,7 @@ def handle_client_4clnt(client: Client):
 				}), True)
 
 
-def main():
-	import argparse
-	parser = argparse.ArgumentParser()
-	parser.add_argument("--no-use-config", action="store_true", help="Don't use config file")
-	parser.add_argument("--server", "-s", action="store_true", help="Start in server mode")
-	parser.add_argument("--webui", "-w", action="store_true", help="Start with web UI")
-	args = parser.parse_args()
+def main(args):
 
 	use_cnf = not args.no_use_config
 	mode = 0 if args.server else 1
@@ -259,4 +255,10 @@ def main():
 
 
 if __name__ == "__main__":
-	main()
+	import argparse
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--no-use-config", action="store_true", help="Don't use config file")
+	parser.add_argument("--server", "-s", action="store_true", help="Start in server mode")
+	parser.add_argument("--webui", "-w", action="store_true", help="Start with web UI")
+	args = parser.parse_args()
+	main(args)
