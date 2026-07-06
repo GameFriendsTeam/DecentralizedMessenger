@@ -1,5 +1,3 @@
-import argparse
-
 from api.commands.CommandManager import CommandManager
 from api.ctp.Server import Server
 from api.ctp.Client import Client
