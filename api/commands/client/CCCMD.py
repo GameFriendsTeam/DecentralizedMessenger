@@ -7,5 +7,5 @@ class CCCMD(Command):
         pass
 
     def execute(self, cs: CommandSender):
-        if (cs.checkConnection(5)): print("Ok!")
+        if (cs.checkConnection(5000)): print("Ok!")
         else: print("Error!")
