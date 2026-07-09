@@ -8,11 +8,12 @@ from api.udp.UDPClient import UDPClient
 from api.udp.UDPServer import UDPServer
 from api.utils.Audio import Audio
 from api.utils.Other import base64_to_bytes, bytes_to_base64
+from api.hp.UDP import get_own_address, punch, parse_addr
 
 
 class ToCMD(Command):
     def __init__(self):
-        pass
+        ...
 
     def execute(self, cs: CommandSender):
         encript = cs.get_encript(__main__.current_getter)
@@ -20,20 +21,41 @@ class ToCMD(Command):
             print("Encryption not initialized")
             return
 
-        cs.send(Packet({"get_address": __main__.current_getter}), True)
-        addr_pkt, _enc = cs.read()
-        target_addr = addr_pkt.get("address")
-        if not target_addr:
-            print(f"{__main__.current_getter} is not online")
-            return
-
         chunk = 1024
         channels = 1
         port = 4444
 
         audio = Audio(channels, chunk, 16000)
+
+        try:
+            addr_data = input("Enter address of server with support UDP punch hole (format: ipV4:port): ").split(":")
+            rhost, rport = addr_data[0], int(addr_data[1])
+        except KeyboardInterrupt:
+            print("User cancel enter")
+            return
+        except Exception as e:
+            print(e)
+            return
+
+        you = get_own_address(rhost, rport, port)
+        you = f"{you[0]}:{you[1]}"
+
+        encript = cs.get_encript(__main__.current_getter)
+
+        nonce, chipertext = encript.encrypt_message(you.encode("utf-8"))
+        cs.transmit(Packet({"my_addr": [bytes_to_base64(nonce), bytes_to_base64(chipertext)], "to": __main__.current_getter}), True)
+
+        peer_pkt, _enc = cs.read()
+        nonce, chipertext = peer_pkt.get("my_addr", None)[0], peer_pkt.get("my_addr", None)[1]
+        dec_addr = encript.decrypt_message(base64_to_bytes(nonce), base64_to_bytes(chipertext)).decode("utf-8")
+        target_addr, peer_port = parse_addr(dec_addr)
+
+        if not target_addr:
+            print("Peer addr not gotten")
+            return
+
         udp_s = UDPServer(port, __main__.MAX_SIZE_SYNC_PACKET)
-        udp_c = UDPClient(target_addr, port, __main__.MAX_SIZE_SYNC_PACKET)
+        udp_c = UDPClient(target_addr, peer_port, __main__.MAX_SIZE_SYNC_PACKET)
 
         def udp_handle_c(udp_clnt):
             while udp_clnt.isStarted():

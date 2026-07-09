@@ -1,9 +1,12 @@
+import asyncio
+
 from api.commands.CommandManager import CommandManager
 from api.ctp.Server import Server
 from api.ctp.Client import Client
 from api.Packet import Packet
 from api.utils.network import find_servers_local, find_servers_global, ScanStatus
 from api.utils.Other import get_all_commands, Config, bytes_to_base64, get_async_ctx, is_valid_ip, run_async_ctx
+from api.hp.Server import handle_client
 import json, threading, random, uuid
 import logging
 
@@ -35,6 +38,7 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 
 			if packet.get("ping", 0) > 0:
 				server.ssend(client, Packet({"ok": True}), _enc)
+				print("Server gotten ping packet")
 
 			elif packet.get("stopsrv"):
 				if addr[0] != "127.0.0.1":
@@ -88,11 +92,11 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 
 			else:
 				getter = packet.get("to", None)
-				content = packet.get("content", None)
 				if getter == None:
 					continue
 
 				if getter == "server":
+					content = packet.get("content", None)
 					logging.info(f"{nn}: {content}")
 					continue
 
@@ -128,9 +132,16 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 		# client.close()
 		server.stop_handler(th_id)
 
+
 cmdm = None
 current_getter = "server"
-def handle_client_4clnt(client: Client):
+
+
+def client_handle_4hndl(client: Client):
+	...
+
+
+def cmd_handle_4hndl(client: Client):
 	global cmdm
 	from api.commands.client._HelpCMD import HelpCMD
 
@@ -167,6 +178,10 @@ def handle_client_4clnt(client: Client):
 				}), True)
 
 
+def handle_client_4clnt(client: Client):
+	asyncio.gather(client_handle_4hndl(client), cmd_handle_4hndl(client))
+
+
 def main(args):
 
 	use_cnf = not args.no_use_config
@@ -187,6 +202,17 @@ def main(args):
 		else:
 			config.set("ui_mode", ui_mode)
 
+	
+	def start_udp_hole_punching(addr) -> bool:
+		import socket
+		srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		srv.bind((addr, 9000))
+		srv.listen(16)
+
+		while True:
+			conn, addr = srv.accept()
+			threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
 
 	def start_webui_thread():
 		import uvicorn
@@ -195,10 +221,15 @@ def main(args):
 		threading.Thread(target=_run, daemon=True).start()
 
 
+	logging.info(f"Mode: {mode}; Use config: {use_cnf}; UI mode: {ui_mode}")
+
 	if mode == 0 and ui_mode == 0:
 		async def start_server():
 			global handle_client_4srv
 			server = await Server.create(1414, MAX_SIZE_SYNC_PACKET)
+
+			if args.udp_hole_punching:
+				threading.Thread(target=start_udp_hole_punching, args=["0.0.0.0"], daemon=True).start()
 
 			server.setClientHandler(handle_client_4srv)
 			await server.start()
@@ -253,10 +284,14 @@ def main(args):
 
 
 if __name__ == "__main__":
-	import argparse
-	parser = argparse.ArgumentParser()
-	parser.add_argument("--no-use-config", action="store_true", help="Don't use config file")
-	parser.add_argument("--server", "-s", action="store_true", help="Start in server mode")
-	parser.add_argument("--webui", "-w", action="store_true", help="Start with web UI")
-	args = parser.parse_args()
-	main(args)
+	try:
+		import argparse
+		parser = argparse.ArgumentParser()
+		parser.add_argument("--no-use-config", "-nuc", action="store_true", help="Don't use config file")
+		parser.add_argument("--server", "-s", action="store_true", help="Start in server mode")
+		parser.add_argument("--webui", "-w", action="store_true", help="Start with web UI")
+		parser.add_argument("--udp-hole-punching", "-u", action="store_true", help="Enable Server UDP hole punching (experimental)")
+		args = parser.parse_args()
+		main(args)
+	except KeyboardInterrupt:
+		pass

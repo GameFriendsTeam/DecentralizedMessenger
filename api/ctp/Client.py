@@ -180,7 +180,7 @@ class Client(CommandSender):
 		
 	def checkConnection(self, timeout: int) -> bool:
 		"""Check connection by sending ping and waiting up to timeout seconds."""
-		self.send(Packet({"ping": timeout * 1000}))
+		self.send(Packet({"ping": timeout * 1000}), True)
 
 		# old_to = self.socket.gettimeout()
 		# try:

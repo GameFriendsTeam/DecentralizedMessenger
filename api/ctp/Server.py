@@ -5,6 +5,7 @@ from typing import Optional
 import threading, uuid
 from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
+from api.hp.Server import handle_client
 from api.protocol import Stream, Endpoint
 from api.ctp.Client import Client
 from api.utils.Other import load_public_key, base64_to_bytes, bytes_to_base64, run_async_ctx
@@ -27,7 +28,7 @@ class Server:
 
 
 	@classmethod
-	async def create(cls, port: int, mssp: int) -> "Server":
+	async def create(cls, port: int, mssp: int, run_hp: bool = False) -> "Server":
 		self = cls()
 		self._ep = await Endpoint.create(host="0.0.0.0", port=port)
 		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -144,6 +145,8 @@ class Server:
 		self.started = True
 		logging.info(f"Server has listening on {self.targetPort}")
 		#self.socket.listen()
+		self._hp_thread = threading.Thread(target=self.hp_srv, daemon=True)
+		self._hp_thread.start()
 
 		while self.started:
 			logging.info("tick")
@@ -162,6 +165,7 @@ class Server:
 			except Exception as ex:
 				logging.info(f"Error accepting connection: {ex}")
 
+
 	def stop_handler(self, th_id):
 		if not th_id in self._handlers:
 			return
@@ -176,6 +180,10 @@ class Server:
 			self.socket.close()
 		except Exception:
 			pass
+
+		if hasattr(self, '_hp_thread'):
+			self._hp_thread.join()
+
 
 	def isStarted(self):
 		return self.started
@@ -226,3 +234,14 @@ class Server:
 
 	def read_key(self, sender: str):
 		raise NotImplementedError("Server-side key exchange is not implemented in this helper")
+	
+
+	def hp_srv(self):
+		srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		srv.bind(("0.0.0.0", self.targetPort))
+		srv.listen(100)
+
+		while True:
+			conn, addr = srv.accept()
+			threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()

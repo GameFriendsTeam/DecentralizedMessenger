@@ -1,19 +1,5 @@
 """
-CTP (Custom Transport Protocol) Endpoint — asyncio UDP socket wrapper.
-
-Usage:
-
-    # Server side
-    endpoint = await Endpoint.create(host="0.0.0.0", port=9000)
-    conn = await endpoint.accept()           # wait for first packet from new peer
-    stream = conn.get_stream(1)
-    data = await stream.recv()
-
-    # Client side
-    endpoint = await Endpoint.create(host="0.0.0.0", port=0)
-    conn = endpoint.connect(("server.ip", 9000))
-    stream = conn.open_stream(1, reliable=True, ordered=True)
-    await stream.send(b"hello")
+MTP Endpoint — asyncio UDP socket wrapper.
 """
 
 import asyncio
@@ -23,12 +9,10 @@ from typing import Callable
 from .connection import Connection
 from .packet import Packet
 
-log = logging.getLogger("ctp.endpoint")
+log = logging.getLogger("mtp.endpoint")
 
 
-class _CTPProtocol(asyncio.DatagramProtocol):
-    """asyncio protocol glue — receives datagrams and dispatches to connections."""
-
+class _MTPProtocol(asyncio.DatagramProtocol):
     def __init__(self, on_packet: Callable, on_error: Callable) -> None:
         self._on_packet = on_packet
         self._on_error  = on_error
@@ -52,58 +36,39 @@ class _CTPProtocol(asyncio.DatagramProtocol):
 
 
 class Endpoint:
-    """
-    A UDP endpoint that manages multiple CTP Connections.
-
-    One Endpoint = one UDP socket (one port).
-    Can hold connections to many remotes simultaneously.
-    """
-
     def __init__(self) -> None:
         self._connections: dict[tuple, Connection] = {}
         self._transport:   asyncio.DatagramTransport | None = None
         self._new_conn_queue: asyncio.Queue | None = None
-
-    # ==================================================================== create
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @classmethod
     async def create(cls, host: str = "0.0.0.0", port: int = 0) -> "Endpoint":
-        """Bind the endpoint to host:port. port=0 picks a free port (client mode)."""
         ep = cls()
-        # Queue must be created inside running loop so it binds to the correct one
-        ep._new_conn_queue = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-        transport, _ = await loop.create_datagram_endpoint(
-            lambda: _CTPProtocol(ep._on_packet, ep._on_error),
+        ep._loop = asyncio.get_running_loop()
+        ep._new_conn_queue = asyncio.Queue()  # создаётся внутри running loop
+        transport, _ = await ep._loop.create_datagram_endpoint(
+            lambda: _MTPProtocol(ep._on_packet, ep._on_error),
             local_addr=(host, port),
         )
         ep._transport = transport
         sock = transport.get_extra_info("socket")
-        actual_addr = sock.getsockname()
-        log.info("CTP Endpoint bound to %s", actual_addr)
+        log.info("MTP Endpoint bound to %s", sock.getsockname())
         return ep
 
     # ====================================================================== API
 
     def connect(self, remote_addr: tuple) -> Connection:
-        """
-        Open a Connection to a remote address.
-        Does NOT send anything yet — streams send the first packets.
-        """
         addr = (remote_addr[0], remote_addr[1])
         if addr in self._connections:
             return self._connections[addr]
-        conn = Connection(remote_addr=addr, transport=self._transport)
+        conn = Connection(remote_addr=addr, transport=self._transport, loop=self._loop)
         conn.start()
         self._connections[addr] = conn
         log.info("Connected to %s", addr)
         return conn
 
     async def accept(self) -> Connection:
-        """
-        Wait until a packet arrives from an unknown remote.
-        Returns the auto-created Connection for that remote.
-        """
         return await self._new_conn_queue.get()
 
     async def close(self) -> None:
@@ -121,10 +86,8 @@ class Endpoint:
 
     def _on_packet(self, pkt: Packet, addr: tuple) -> None:
         addr = (addr[0], addr[1])
-
         if addr not in self._connections:
-            # New remote — auto-create connection
-            conn = Connection(remote_addr=addr, transport=self._transport)
+            conn = Connection(remote_addr=addr, transport=self._transport, loop=self._loop)
             conn.start()
             self._connections[addr] = conn
             log.info("New connection from %s", addr)

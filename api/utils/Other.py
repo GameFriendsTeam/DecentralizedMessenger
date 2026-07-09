@@ -4,11 +4,13 @@ import inspect
 import ipaddress
 import json
 from pathlib import Path
-import socket as socket_module
+import sys
 import threading
 from typing import Optional
 from cryptography.hazmat.primitives.asymmetric import x25519
 import os
+from numpy import select
+
 
 def format_bytes(size):
 	# Using standard labels instead of binary ones
@@ -22,6 +24,7 @@ def format_bytes(size):
 def load_public_key(data: bytes):
 	return x25519.X25519PublicKey.from_public_bytes(data)
 
+
 class Logger:
 	logging: bool = True
 
@@ -34,6 +37,7 @@ class Logger:
 	def log(self, msg) -> None:
 		if not self.logging: return
 		print(f"[DM] {msg}")
+
 
 class FileLogger(Logger):
 	file_path: str
@@ -68,9 +72,11 @@ class Config:
 		with open(self.filename, 'r') as f:
 			self._data = json.load(f)
 
+
 def bytes_to_base64(data: bytes) -> str:
 	import base64
 	return base64.b64encode(data).decode("utf-8")
+
 
 def base64_to_bytes(data: str) -> bytes:
 	import base64
@@ -121,8 +127,38 @@ def rm_async_ctx(key) -> None:
 
 
 def is_valid_ip(ip_str):
-    try:
-        ipaddress.ip_address(ip_str)
-        return True
-    except ValueError:
-        return False
+	try:
+		ipaddress.ip_address(ip_str)
+		return True
+	except ValueError:
+		return False
+
+
+async def ainput_unix(prompt: str = "") -> str:
+	import tty
+	import termios
+	if prompt:
+		print(prompt, end="", flush=True)
+	fd = sys.stdin.fileno()
+	old = termios.tcgetattr(fd)
+	buf = []
+	try:
+		tty.setcbreak(fd)
+		while True:
+			r, _, _ = select.select([sys.stdin], [], [], 0)
+			if r:
+				ch = sys.stdin.read(1)
+				if ch in ("\r", "\n"):
+					print()
+					return "".join(buf)
+				elif ch == "\x7f":
+					if buf:
+						buf.pop()
+						sys.stdout.write("\b \b"); sys.stdout.flush()
+				else:
+					buf.append(ch)
+					sys.stdout.write(ch); sys.stdout.flush()
+			else:
+				await asyncio.sleep(0.01)
+	finally:
+		termios.tcsetattr(fd, termios.TCSADRAIN, old)
