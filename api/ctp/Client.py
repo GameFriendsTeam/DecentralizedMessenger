@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Optional
 from cryptography.hazmat.primitives.asymmetric import x25519
 from api.commands.CommandSender import CommandSender
@@ -10,6 +11,7 @@ from api.Packet import Packet
 from api.EncryptedPacket import EncryptedPacket
 from api.utils.Other import load_public_key, base64_to_bytes, bytes_to_base64
 from api.utils.Other import get_async_ctx, run_async_ctx
+import multiprocessing as mp
 
 
 class Client(CommandSender):
@@ -20,7 +22,7 @@ class Client(CommandSender):
 	targetPort: int
 	username: str
 
-	def __init__(self, addr: str, port: int, username: str, mssp: int):
+	def __init__(self, addr: str, port: int, username: str, password: str, mssp: int):
 		self._loop = get_async_ctx(self.__class__.__name__)
 		_ep = run_async_ctx(self._loop, Endpoint.create(host="127.0.0.1", port=0))
 		conn = _ep.connect((addr, port))
@@ -37,6 +39,7 @@ class Client(CommandSender):
 		self.targetPort = port
 		self.size_sync_p = mssp
 		self.username = username
+		self.password = password
 		self.encripts = {} # Of SecureEncryption
 		self.srv_enc = Encryption()
 		
@@ -44,7 +47,7 @@ class Client(CommandSender):
 	def getUsername(self): return self.username
 	def sendUsername(self):
 		if not self.started or self.username == "": return
-		packet = Packet({"name":self.username})
+		packet = Packet({"name": self.username, "password": self.password})
 		self.send(packet, True)
 
 
@@ -177,24 +180,28 @@ class Client(CommandSender):
 		if not self.started: raise Exception("Client socket is closed")
 		packet.set("transmit", True)
 		self.send(packet, encrypt)
-		
-	def checkConnection(self, timeout: int) -> bool:
-		"""Check connection by sending ping and waiting up to timeout seconds."""
-		self.send(Packet({"ping": timeout * 1000}), True)
 
-		# old_to = self.socket.gettimeout()
-		# try:
-		# 	self.socket.settimeout(timeout)
-		# 	self.read()
-		# 	return True
-		# except socket.timeout:
-		# 	return False
-		# finally:
-		# 	try:
-		# 		self.socket.settimeout(old_to)
-		# 	except Exception:
-		# 		self.socket.settimeout(None)
-		return True  # For now, assume connection is alive since we don't have a proper read implementation here.
+
+	def __cc(self, timeout: int, q):
+		"""Check connection by sending ping and waiting up to timeout seconds."""
+		ts = time.time()
+		self.send(Packet({"ping": timeout, "timestamp": ts}))
+
+		server_status = self.read().get("ok", False)
+		end_ts = time.time()
+		status = server_status and (end_ts-ts<=timeout*1000)
+		q.put(status)
+
+	def checkConnection(self, timeout: int) -> bool:
+		q = mp.Queue()
+		p = mp.Process(target=self.cc, args=[timeout, q])
+		p.start()
+
+		try:
+			status = q.get(True, timeout)
+			return status
+		except mp.queue.Empty:
+			return False
 
 
 	def _init_encript(self, to: str):

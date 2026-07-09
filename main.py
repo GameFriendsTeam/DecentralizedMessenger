@@ -9,6 +9,8 @@ from api.utils.Other import get_all_commands, Config, bytes_to_base64, get_async
 from api.hp.Server import handle_client
 import json, threading, random, uuid
 import logging
+import time
+
 
 # basic logging
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +38,11 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 			if not packet:
 				continue
 
-			if packet.get("ping", 0) > 0:
+			if ping := packet.get("ping", 0):
+				client_ts = packet.get("timestamp", 0)
+				server_ts = time.time()
+				if server_ts-client_ts > ping*1000:
+					server.ssend(client, Packet({"ok": False}), _enc)
 				server.ssend(client, Packet({"ok": True}), _enc)
 				print("Server gotten ping packet")
 
@@ -238,6 +244,7 @@ def main(args):
 		run_async_ctx(aloop, start_server(), timeout=None)
 
 	if mode == 1 and ui_mode == 0:
+		import getpass
 		addr = None
 		port = None
 		if use_cnf:
@@ -266,10 +273,11 @@ def main(args):
 			nickname = input("Enter you're name: ")
 			if use_cnf:
 				config.set("nickname", nickname)
+		password = getpass.getpass("Enter password: ")
 		if use_cnf:
 			config.save()
 
-		client = Client(addr, port, nickname, MAX_SIZE_SYNC_PACKET)
+		client = Client(addr, port, nickname, password, MAX_SIZE_SYNC_PACKET)
 		client.setThread(handle_client_4clnt)
 		client.start()
 
