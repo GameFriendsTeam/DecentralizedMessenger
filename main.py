@@ -4,6 +4,7 @@ from api.commands.CommandManager import CommandManager
 from api.ctp.Server import Server
 from api.ctp.Client import Client
 from api.Packet import Packet
+from api.protocol.stream import Stream
 from api.utils.network import find_servers_local, find_servers_global, ScanStatus
 from api.utils.Other import get_all_commands, Config, bytes_to_base64, get_async_ctx, is_valid_ip, run_async_ctx
 from api.hp.Server import handle_client
@@ -17,21 +18,46 @@ logging.basicConfig(level=logging.INFO)
 
 
 pid_uuid = str(uuid.uuid4())
-MAX_SIZE_SYNC_PACKET = 256
+MAX_SIZE_SYNC_PACKET = 128
 
 
 nn_ls = {}
 nn_conn = {}
+th_ids = {}
+loop = get_async_ctx(__name__)
 
-def handle_client_4srv(server: Server, client, addr, th_id):
-	global nn_ls
+
+def handle_client_4srv(server: Server, client: Stream, addr, th_id):
+	global nn_ls, nn_conn, th_ids
 	addr_str = f"{addr[0]}:{addr[1]}"
 	try:
+		suffix = ""
 		server.sinit_encrypt(client)
 		nn = server.sread(client)[0]["name"]
-		logging.info(f"Client({nn}) connected!")
-		nn_ls[addr_str] = nn
+		if nn in nn_conn:
+			nn_addr = nn_ls[nn]
+			logging.warning(f"Client {nn} has been connected already. Pinging {nn_addr} connection...")
+			try:
+				pkt, _enc = server.sread(nn_conn.get(nn), 5)
+				if not pkt:
+					raise Exception("")
+				client.close()
+				server.stop_handler(th_id)
+			except:
+				logging.warning(F"Connection of {nn_addr} out of date")
+				nn_ls.pop(nn, None)
+				run_async_ctx(loop, nn_conn.get(nn).close())
+				nn_conn.pop(nn, None)
+				server.stop_handler(th_ids.get(nn))
+				th_ids.pop(nn)
+				logging.info(f"Disconnected {nn_addr}")
+				suffix = "(Reconnect) "
+				
+		logging.info(f"{suffix}Client({nn}) connected!")
+		nn_ls[nn] = addr_str
 		nn_conn[nn] = client
+		th_ids[nn] = th_id
+		server.ssend(client, Packet({"ok": True}), True)
 
 		while server.isStarted() and (th_id in server._handlers):
 			packet, _enc = server.sread(client)
@@ -43,13 +69,16 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 				server_ts = time.time()
 				if server_ts-client_ts > ping*1000:
 					server.ssend(client, Packet({"ok": False}), _enc)
+					continue
 				server.ssend(client, Packet({"ok": True}), _enc)
-				print("Server gotten ping packet")
+				ping = (server_ts-client_ts)*1000
+				logging.info(f"Server gotten ping packet. Packet latency: {str(int(ping))}ms")
 
 			elif packet.get("stopsrv"):
 				if addr[0] != "127.0.0.1":
 					server.ssend(client, Packet({"ok": False, "error": "You are not host"}), _enc)
 					continue
+				logging.info("Stopping server...")
 				server.ssend(client, Packet({"ok": True}), _enc)
 				server.stop()
 
@@ -77,7 +106,7 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 				old_name = nn
 				nn = new_name
 
-				nn_ls[addr_str] = nn
+				nn_ls[nn] = addr_str
 				nn_conn[nn] = client
 
 				# remove old mapping safely
@@ -89,7 +118,7 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 			elif packet.get("get_address"):
 				test_nn = packet.get("get_address")
 				if test_nn in nn_conn:
-					server.ssend(client, Packet({"address": nn_conn[test_nn]}), _enc)
+					server.ssend(client, Packet({"address": nn_ls[test_nn]}), _enc)
 				else:
 					server.ssend(client, Packet({"address": False}), _enc)
 
@@ -103,7 +132,7 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 
 				if getter == "server":
 					content = packet.get("content", None)
-					logging.info(f"{nn}: {content}")
+					logging.info(f"[{nn}] {content}")
 					continue
 
 				elif getter == nn:
@@ -128,14 +157,16 @@ def handle_client_4srv(server: Server, client, addr, th_id):
 	except json.JSONDecodeError as e:
 		logging.debug("JSON decode error in server handler: %s", e)
 	finally:
-		name = nn_ls.get(addr_str, None)
+		name = next(k for k, v in nn_ls.items() if v == addr_str)
 		display_name = name if name else "UNKNOWN"
 		logging.info(f"{display_name} has been disconnected")
 
 		if name:
-			nn_ls.pop(addr_str, None)
+			nn_ls.pop(nn, None)
 			nn_conn.pop(name, None)
+			th_ids.pop(name, None)
 		# client.close()
+		run_async_ctx(loop, client.close())
 		server.stop_handler(th_id)
 
 
@@ -143,11 +174,11 @@ cmdm = None
 current_getter = "server"
 
 
-def client_handle_4hndl(client: Client):
+async def client_handle_4hndl(client: Client):
 	...
 
 
-def cmd_handle_4hndl(client: Client):
+async def cmd_handle_4hndl(client: Client):
 	global cmdm
 	from api.commands.client._HelpCMD import HelpCMD
 

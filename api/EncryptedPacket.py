@@ -62,7 +62,7 @@ class EncryptedPacket(Packet):
 		remnant = max_len - pl0 - enc_len
 		packet_noise = f":{enc_alert}"+"b"*(remnant-1)
 
-		return str(packet0)+packet_noise
+		return packet0.getStr()+packet_noise
 
 	@staticmethod
 	def extractPayload(raw: str) -> str:

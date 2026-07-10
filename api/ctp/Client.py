@@ -28,7 +28,7 @@ class Client(CommandSender):
 		conn = _ep.connect((addr, port))
 		logging.info("Waiting opening stream and sync packet...")
 
-		self._stream = conn.open_stream(0)
+		self._stream = conn.open_stream(0, False, True)
 		try:
 			run_async_ctx(self._loop, self._stream.sync(), timeout=5.0)
 		except TimeoutError:
@@ -85,7 +85,7 @@ class Client(CommandSender):
 			  - Packet - read packet
 			  - bool - is encrypted
 		"""
-		rawLen = run_async_ctx(self._loop, self._stream.recv()).decode("utf-8")
+		rawLen = run_async_ctx(self._loop, self._stream.recv(), 6).decode("utf-8")
 		if rawLen == None or rawLen == "": return None, False
 		packetEnd = rawLen.rfind('}')
 		if packetEnd < 0:
@@ -101,7 +101,7 @@ class Client(CommandSender):
 	def read_ecryptedpkt(self, rawLen: Optional[str] = None) -> EncryptedPacket:
 		enc = self.srv_enc
 		if not rawLen:
-			rawLen = run_async_ctx(self._loop, self._stream.recv()).decode("utf-8")
+			rawLen = run_async_ctx(self._loop, self._stream.recv(), 6).decode("utf-8")
 		if rawLen is None or rawLen == "":
 			return None
 
@@ -144,7 +144,7 @@ class Client(CommandSender):
 		#self.socket.connect((self.targetAddr, self.targetPort))
 
 		srv_key, _ = self.read()
-		pr_k, pub_k = self.srv_enc.generate_keypair()
+		self.srv_enc.generate_keypair()
 		key_bytes = self.srv_enc.serialize_public_key()
 		pkt = Packet({"key": bytes_to_base64(key_bytes)})
 		self.send(pkt)
@@ -153,6 +153,7 @@ class Client(CommandSender):
 		self.started = True
 		logging.info("Connected!")
 		self.sendUsername()
+		status = self.read()
 
 		th = self._th
 		th(self)
@@ -161,7 +162,7 @@ class Client(CommandSender):
 
 	def stop(self):
 		try:
-			self.send(Packet({"disconnect": True}))
+			self.send(Packet({"disconnect": True}), True)
 		except ConnectionError:
 			...
 		except BrokenPipeError:
@@ -182,26 +183,20 @@ class Client(CommandSender):
 		self.send(packet, encrypt)
 
 
-	def __cc(self, timeout: int, q):
+	def _cc(self, timeout: int):
 		"""Check connection by sending ping and waiting up to timeout seconds."""
 		ts = time.time()
-		self.send(Packet({"ping": timeout, "timestamp": ts}))
+		self.send(Packet({"ping": timeout, "timestamp": ts}), True)
 
-		server_status = self.read().get("ok", False)
+		server_status = self.read()[0].get("ok", False)
 		end_ts = time.time()
 		status = server_status and (end_ts-ts<=timeout*1000)
-		q.put(status)
+		return (status, (end_ts-ts))
 
 	def checkConnection(self, timeout: int) -> bool:
-		q = mp.Queue()
-		p = mp.Process(target=self.cc, args=[timeout, q])
-		p.start()
+		status, time = self._cc(timeout)
 
-		try:
-			status = q.get(True, timeout)
-			return status
-		except mp.queue.Empty:
-			return False
+		return status, time
 
 
 	def _init_encript(self, to: str):
@@ -239,7 +234,7 @@ class Client(CommandSender):
 			"from": self.getUsername()
 		}
 
-		self.send(Packet(packet_data))
+		self.send(Packet(packet_data), True)
 
 	def read_key(self, sender: str):
 		encript = self._init_encript(sender)

@@ -23,4 +23,6 @@ class RawCMD(Command):
             cs.send(Packet(data), True)
         else:
             cs.send(Packet({"data": data}), True)
-        print(cs.read()[0])
+        result, _enc = cs.read()
+        data = json.dumps(result.getAll())
+        print(data, f"Is encrypted: {_enc}", sep="\n")
