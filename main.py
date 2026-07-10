@@ -330,13 +330,9 @@ def main(args):
 
 		client = Client(addr, port, nickname, password, MAX_SIZE_SYNC_PACKET)
 		client.setThread(handle_client_4clnt)
-		try:
-			client.start()
-		except TimeoutError:
-			logging.error(
-				"Handshake with the server timed out (it may still be evicting a "
-				"stale connection with your username). Please try connecting again."
-			)
+
+		client.start()
+
 
 	# Start web UI option
 	if ui_mode == 1:
