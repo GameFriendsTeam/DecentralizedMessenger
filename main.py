@@ -169,7 +169,10 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 	except json.JSONDecodeError as e:
 		logging.debug("JSON decode error in server handler: %s", e)
 	finally:
-		name = next(k for k, v in nn_ls.items() if v == addr_str)
+		try:
+			name = next(k for k, v in nn_ls.items() if v == addr_str)
+		except StopIteration:
+			name = None
 		display_name = name if name else "UNKNOWN"
 		logging.info(f"{display_name} has been disconnected")
 
