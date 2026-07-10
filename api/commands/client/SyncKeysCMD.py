@@ -4,7 +4,7 @@ from cryptography.hazmat.primitives.asymmetric import x25519
 import __main__
 
 
-class ToCMD(Command):
+class SyncKeysCMD(Command):
     def __init__(self):
         pass
 

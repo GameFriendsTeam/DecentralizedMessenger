@@ -11,7 +11,7 @@ from api.utils.Other import base64_to_bytes, bytes_to_base64
 from api.hp.UDP import get_own_address, punch, parse_addr
 
 
-class ToCMD(Command):
+class VoiceCMD(Command):
     def __init__(self):
         ...
 
