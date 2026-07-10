@@ -15,7 +15,10 @@ class ReadCMD(Command):
 
         try:
             while active:
-                packet, _enc = cs.read()
+                try:
+                    packet, _enc = cs.read()
+                except TimeoutError:
+                    continue
                 sender, content = packet.get("from", "[unknown]"), packet.get("content", "[ERROR]")
 
                 if content == "Encrypted":

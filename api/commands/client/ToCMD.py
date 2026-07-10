@@ -15,7 +15,7 @@ class ToCMD(Command):
 
         cs.send(Packet({"is_online": to}), True if cs.srv_enc else False)
         status, _enc = cs.read()
-        print(status)
+        print(status.getAll())
 
         if not status.get("online", False):
             print(f"\"{to}\" is not online")
