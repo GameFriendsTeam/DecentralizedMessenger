@@ -3,13 +3,13 @@ from api.utils.Encryption import SecureEncryption
 
 
 class CommandSender:
-    def read(self) -> tuple[Packet, bool]:
+    def read(self, timeout: int = 6) -> tuple[Packet, bool]:
         pass
 
     def send(self, packet: Packet, encrypt: bool = False):
         pass
 
-    def stop():
+    def stop(self):
         pass
 
     def transmit(self, packet: Packet, encrypt: bool = False):

@@ -98,12 +98,12 @@ class Client(CommandSender):
 
 		return Packet.fromRaw(rawPacket), False
 
-	def read_ecryptedpkt(self, rawLen: Optional[str] = None) -> EncryptedPacket:
+	def read_ecryptedpkt(self, rawLen: Optional[str] = None, timeout: int = 6) -> EncryptedPacket:
 		if not self.connectionIsSecure():
 			return None
 		enc = self.srv_enc
 		if not rawLen:
-			rawLen = run_async_ctx(self._loop, self._stream.recv(), 6).decode("utf-8")
+			rawLen = run_async_ctx(self._loop, self._stream.recv(), timeout).decode("utf-8")
 		if rawLen is None or rawLen == "":
 			return None
 
@@ -112,7 +112,7 @@ class Client(CommandSender):
 
 		payload = EncryptedPacket.extractPayload(rawLen)
 		lenPacket = EncryptedPacket.fromRaw(payload, enc)["len"]
-		rawPacket = run_async_ctx(self._loop, self._stream.recv())
+		rawPacket = run_async_ctx(self._loop, self._stream.recv(), timeout)
 		if not rawPacket or lenPacket < 1:
 			return None
 

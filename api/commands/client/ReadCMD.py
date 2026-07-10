@@ -15,10 +15,7 @@ class ReadCMD(Command):
 
         try:
             while active:
-                try:
-                    packet, _enc = cs.read()
-                except TimeoutError:
-                    continue
+                packet, _enc = cs.read(None)
                 if not packet:
                     continue
                 sender, content = packet.get("from", "[unknown]"), packet.get("content", "[ERROR]")
