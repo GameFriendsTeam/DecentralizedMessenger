@@ -257,20 +257,20 @@ class Client(CommandSender):
 
 		self.send(Packet(packet_data), True)
 
-	def read_key(self, sender: str):
+	def read_key(self, sender: str, timeout: int = 6):
 		encript = self._init_encript(sender)
 
 		packet_with_key = None
 
 		while not packet_with_key:
-			packet, _ = self.read()
+			packet, _ = self.read(timeout)
 			logging.info(packet)
 			if packet.get("signature"):
 				packet_with_key = packet
 
 		if not packet_with_key:
 			logging.info("Packet with key not given")
-			return None
+			return
 		peer_x25519_pub = base64_to_bytes(packet_with_key["x25519_pub"])
 		peer_ed25519_pub = base64_to_bytes(packet_with_key["ed25519_pub"])
 		peer_sig = base64_to_bytes(packet_with_key["signature"])
@@ -281,7 +281,7 @@ class Client(CommandSender):
 			peer_ed25519_pub
 		):
 			logging.info("Invalid signature!")
-			return None
+			return
 
 		encript.verify_peer_manually(
 			sender,

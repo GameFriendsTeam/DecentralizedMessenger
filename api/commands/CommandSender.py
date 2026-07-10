@@ -23,3 +23,9 @@ class CommandSender:
     
     def connectionIsSecure(self) -> bool:
         return bool()
+
+    def send_key(self, to: str):
+        pass
+
+    def read_key(self, sender: str, timeout: int = 6):
+        pass

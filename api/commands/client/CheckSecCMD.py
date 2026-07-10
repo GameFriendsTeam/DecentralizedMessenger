@@ -47,7 +47,7 @@ class CheckSecCMD(Command):
 					"ed25519_pub": bytes_to_base64(my_ed25519_pub)
 				}))
 				input("Press Enter to continue...")
-				peer_key_pkt, _ = cs.read()
+				peer_key_pkt, _ = cs.read(None)
 				peer_x25519_pub = bytes_to_base64(peer_key_pkt.get("x25519_pub"))
 				peer_ed25519_pub = bytes_to_base64(peer_key_pkt.get("ed25519_pub"))
 				trusted_ed25519_key = enc.get_trusted_peer_key(__main__.current_getter)[0]

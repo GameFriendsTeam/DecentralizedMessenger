@@ -27,4 +27,4 @@ class SyncKeysCMD(Command):
         cs.send_key(__main__.current_getter)
 
         print("Reading key packet...")
-        cs.read_key(__main__.current_getter)
+        cs.read_key(__main__.current_getter, None)

@@ -36,10 +36,10 @@ class ReadCMD(Command):
                     if not encript:
                         continue
                     pkt0 = packet
-                    pkt1, _enc = cs.read()
+                    pkt1, _enc = cs.read(None)
                     if pkt0.get("type", None) != "key2file":
                         pkt0 = pkt1
-                        pkt1, _enc = cs.read()
+                        pkt1, _enc = cs.read(None)
                     if pkt1.get("type", None) != "filedata":
                         print("Incorrect data")
                         continue
