@@ -275,7 +275,7 @@ def main(args):
 	if mode == 0 and ui_mode == 0:
 		async def start_server():
 			global handle_client_4srv
-			server = await Server.create(1414, MAX_SIZE_SYNC_PACKET)
+			server = await Server.create(args.port, MAX_SIZE_SYNC_PACKET)
 
 			if args.udp_hole_punching:
 				threading.Thread(target=start_udp_hole_punching, args=[args.host], daemon=True).start()
@@ -350,6 +350,7 @@ if __name__ == "__main__":
 		parser.add_argument("--udp-hole-punching", "-u", action="store_true", help="Enable Server UDP hole punching (experimental)")
 		parser.add_argument("--disable-encryption", "-de", action="store_true", help="Disable encryption (not recommended, Server-side argument)")
 		parser.add_argument("--host", "-H", type=str, default="127.0.0.1", help="Address for run server")
+		parser.add_argument("--port", "-p", type=int, default=1414, help="Port for run server")
 		args = parser.parse_args()
 		main(args)
 	except KeyboardInterrupt:
