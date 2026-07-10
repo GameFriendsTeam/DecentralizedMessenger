@@ -1,5 +1,5 @@
 import asyncio
-
+import sys
 from api.commands.CommandManager import CommandManager
 from api.ctp.Server import Server
 from api.ctp.Client import Client
@@ -13,6 +13,10 @@ import logging
 import time
 
 
+#if sys.platform == 'win32':
+#	asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
 # basic logging
 logging.basicConfig(level=logging.INFO)
 
@@ -24,7 +28,8 @@ MAX_SIZE_SYNC_PACKET = 128
 nn_ls = {}
 nn_conn = {}
 th_ids = {}
-loop = get_async_ctx(__name__)
+loop = asyncio.SelectorEventLoop()
+asyncio.set_event_loop(loop)
 
 
 srv_disable_encryption = False

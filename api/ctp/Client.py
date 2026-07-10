@@ -24,7 +24,7 @@ class Client(CommandSender):
 
 	def __init__(self, addr: str, port: int, username: str, password: str, mssp: int):
 		self._loop = get_async_ctx(self.__class__.__name__)
-		_ep = run_async_ctx(self._loop, Endpoint.create(host="127.0.0.1", port=0))
+		_ep = run_async_ctx(self._loop, Endpoint.create(host=("127.0.0.1" if addr == "127.0.0.1" else "0.0.0.0"), port=0))
 		conn = _ep.connect((addr, port))
 		logging.info("Waiting opening stream and sync packet...")
 

@@ -4,6 +4,8 @@ MTP Endpoint — asyncio UDP socket wrapper.
 
 import asyncio
 import logging
+import socket
+import sys
 from typing import Callable
 
 from .connection import Connection
@@ -47,14 +49,67 @@ class Endpoint:
         ep = cls()
         ep._loop = asyncio.get_running_loop()
         ep._new_conn_queue = asyncio.Queue()  # создаётся внутри running loop
+
+        raw_sock = cls._make_socket(host, port)
         transport, _ = await ep._loop.create_datagram_endpoint(
             lambda: _MTPProtocol(ep._on_packet, ep._on_error),
-            local_addr=(host, port),
+            sock=raw_sock,
         )
         ep._transport = transport
         sock = transport.get_extra_info("socket")
         log.info("MTP Endpoint bound to %s", sock.getsockname())
         return ep
+
+    @staticmethod
+    def _disable_udp_connreset(sock: socket.socket) -> None:
+        """
+        Отключает SIO_UDP_CONNRESET через прямой вызов WSAIoctl (ctypes).
+
+        socket.socket.ioctl() в Python поддерживает только SIO_RCVALL /
+        SIO_KEEPALIVE_VALS / SIO_LOOPBACK_FAST_PATH — это захардкожено
+        в реализации на C, SIO_UDP_CONNRESET через него не пройдёт.
+        """
+        import ctypes
+
+        SIO_UDP_CONNRESET = 0x9800000C  # _WSAIOW(IOC_VENDOR, 12)
+
+        ws2_32 = ctypes.WinDLL("ws2_32")
+        in_buf = ctypes.c_bool(False)
+        bytes_returned = ctypes.c_ulong(0)
+
+        ret = ws2_32.WSAIoctl(
+            sock.fileno(),
+            SIO_UDP_CONNRESET,
+            ctypes.byref(in_buf), ctypes.sizeof(in_buf),
+            None, 0,
+            ctypes.byref(bytes_returned),
+            None, None,
+        )
+        if ret != 0:
+            err = ctypes.windll.ws2_32.WSAGetLastError()
+            raise OSError(f"WSAIoctl(SIO_UDP_CONNRESET) failed, WSAGetLastError={err}")
+
+    @staticmethod
+    def _make_socket(host: str, port: int) -> socket.socket:
+        """
+        Создаём и биндим сокет сами (вместо local_addr=), чтобы на Windows
+        успеть отключить SIO_UDP_CONNRESET до первого recv.
+
+        Без этого ProactorEventLoop матчит пришедший ICMP
+        Host/Port Unreachable от ЛЮБОГО из пиров с текущей recv-операцией
+        на сокете (WinError 1231 / 10054) — а у Endpoint один сокет на
+        много Connection, так что ошибка от одного адреса может
+        застопорить приём от остальных, пока сокет не пересоздан.
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if sys.platform == "win32":
+            try:
+                Endpoint._disable_udp_connreset(sock)
+            except OSError as exc:
+                log.warning("Could not disable SIO_UDP_CONNRESET: %s", exc)
+        sock.bind((host, port))
+        sock.setblocking(False)
+        return sock
 
     # ====================================================================== API
 
