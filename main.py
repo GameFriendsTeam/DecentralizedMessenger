@@ -181,7 +181,10 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 			nn_conn.pop(name, None)
 			th_ids.pop(name, None)
 		# client.close()
-		run_async_ctx(loop, client.close())
+		try:
+			run_async_ctx(loop, client.close())
+		except TimeoutError:
+			logging.warning(f"TimeoutError while closing connection for {display_name}")
 		server.stop_handler(th_id)
 
 
