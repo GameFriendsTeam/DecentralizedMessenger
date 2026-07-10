@@ -52,7 +52,7 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 					raise Exception("")
 				client.close()
 				server.stop_handler(th_id)
-			except:
+			except TimeoutError:
 				logging.warning(F"Connection of {nn_addr} out of date")
 				nn_ls.pop(nn, None)
 				run_async_ctx(loop, nn_conn.get(nn).close())
