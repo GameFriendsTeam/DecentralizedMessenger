@@ -58,7 +58,7 @@ class Client(CommandSender):
 
 
 	def send(self, packet: Packet, encrypt: bool = False):
-		if encrypt:
+		if encrypt and self.connectionIsSecure():
 			self.send_ecryptedpkt(packet.getAll())
 			return
 		packet_len = len(packet)
@@ -77,7 +77,7 @@ class Client(CommandSender):
 		run_async_ctx(self._loop, self._stream.send(bytes(packet)))
 
 
-	def read(self) -> tuple[Packet, bool]:
+	def read(self, timeout: int = 6) -> tuple[Packet, bool]:
 		"""
 		Read packet
 		Returns:
@@ -85,20 +85,22 @@ class Client(CommandSender):
 			  - Packet - read packet
 			  - bool - is encrypted
 		"""
-		rawLen = run_async_ctx(self._loop, self._stream.recv(), 6).decode("utf-8")
+		rawLen = run_async_ctx(self._loop, self._stream.recv(), timeout).decode("utf-8")
 		if rawLen == None or rawLen == "": return None, False
 		packetEnd = rawLen.rfind('}')
-		if packetEnd < 0:
+		if packetEnd < 0 and self.connectionIsSecure():
 			return self.read_ecryptedpkt(rawLen), True
 		rawLen = rawLen[:packetEnd + 1]
 
 		lenPacket = Packet.fromRaw(rawLen).get("len", 128)
-		rawPacket = run_async_ctx(self._loop, self._stream.recv())
+		rawPacket = run_async_ctx(self._loop, self._stream.recv(), timeout)
 		if not rawPacket or lenPacket < 1: return None, False
 
 		return Packet.fromRaw(rawPacket), False
 
 	def read_ecryptedpkt(self, rawLen: Optional[str] = None) -> EncryptedPacket:
+		if not self.connectionIsSecure():
+			return None
 		enc = self.srv_enc
 		if not rawLen:
 			rawLen = run_async_ctx(self._loop, self._stream.recv(), 6).decode("utf-8")
@@ -143,17 +145,29 @@ class Client(CommandSender):
 	def start(self):
 		#self.socket.connect((self.targetAddr, self.targetPort))
 
-		srv_key, _ = self.read()
-		self.srv_enc.generate_keypair()
-		key_bytes = self.srv_enc.serialize_public_key()
-		pkt = Packet({"key": bytes_to_base64(key_bytes)})
-		self.send(pkt)
-		self.srv_enc.derive_shared_key(load_public_key(base64_to_bytes(srv_key.get("key"))))
+		try:
+			srv_key, _ = self.read()
+			if srv_key is None or srv_key.get("no_encryption"):
+				raise Exception("Server has encryption disabled")
+			logging.info(f"Server key received: {srv_key}")
+			self.srv_enc.generate_keypair()
+			key_bytes = self.srv_enc.serialize_public_key()
+			pkt = Packet({"key": bytes_to_base64(key_bytes)})
+			self.send(pkt)
+			self.srv_enc.derive_shared_key(load_public_key(base64_to_bytes(srv_key.get("key"))))
+		except Exception as exc:
+			logging.error(f"Error while establishing secure connection: {exc}. Secure connection will not be used.")
+			self.srv_enc = None
 
 		self.started = True
-		logging.info("Connected!")
+		logging.info("Connected! Sending username...")
 		self.sendUsername()
-		status = self.read()
+		logging.info("Username sent. Waiting for confirmation...")
+		status, _enc = self.read(timeout=15)
+		logging.info(f"Confirmation received: {status}.")
+		self.send(Packet({"ready": True}), _enc)
+		logging.info("Ready signal sent.")
+		logging.info("Ready!")
 
 		th = self._th
 		th(self)
@@ -194,9 +208,16 @@ class Client(CommandSender):
 		return (status, (end_ts-ts))
 
 	def checkConnection(self, timeout: int) -> bool:
-		status, time = self._cc(timeout)
+		try:
+			status, time = self._cc(timeout)
+		except TimeoutError:
+			return False, 0
 
 		return status, time
+
+
+	def connectionIsSecure(self) -> bool:
+		return self.srv_enc != None
 
 
 	def _init_encript(self, to: str):
@@ -211,7 +232,7 @@ class Client(CommandSender):
 		self.encripts[to] = encript
 		return encript
 
-	def get_encript(self, to: str) -> SecureEncryption:
+	def get_encript(self, to: str) -> Optional[SecureEncryption]:
 		return self.encripts.get(to, None)
 
 

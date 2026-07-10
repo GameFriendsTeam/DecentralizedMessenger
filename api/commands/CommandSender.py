@@ -20,3 +20,6 @@ class CommandSender:
 
     def checkConnection(self, timeout: int) -> bool:
             pass
+    
+    def connectionIsSecure(self) -> bool:
+        return bool()

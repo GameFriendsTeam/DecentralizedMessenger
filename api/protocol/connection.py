@@ -34,7 +34,7 @@ class Connection:
         self._loop        = loop          # явно передаём loop
         self._streams:    dict[int, Stream] = {}
         self._pending:    dict[tuple, _PendingPacket] = {}
-        self._ack_pending: dict[int, int] = {}
+        self._ack_pending: dict[int, set[int]] = {}
         self._ack_task:   asyncio.Task | None = None
         self._stream_waiters: dict[int, list[asyncio.Future]] = {}
         self._retransmit_task: asyncio.Task | None = None
@@ -83,8 +83,12 @@ class Connection:
 
     async def _send_packet(self, pkt: Packet) -> None:
         if pkt.stream_id in self._ack_pending:
-            pkt.ack   = self._ack_pending.pop(pkt.stream_id)
-            pkt.flags |= Flags.ACK
+            seqs = self._ack_pending.pop(pkt.stream_id)
+            if seqs:
+                pkt.ack   = seqs.pop()          # piggyback one ack on this packet
+                pkt.flags |= Flags.ACK
+                for remaining_seq in seqs:       # ack the rest explicitly
+                    await self._send_ack(pkt.stream_id, remaining_seq)
 
         data = pkt.encode()
         self._transport.sendto(data, self.remote_addr)
@@ -114,7 +118,7 @@ class Connection:
                 return
 
         if pkt.is_reliable() and pkt.payload:
-            self._ack_pending[pkt.stream_id] = pkt.seq
+            self._ack_pending.setdefault(pkt.stream_id, set()).add(pkt.seq)
             self._schedule_ack_flush()
 
         stream = self._streams.get(pkt.stream_id)
@@ -182,8 +186,9 @@ class Connection:
 
     async def _ack_flush_task(self) -> None:
         await asyncio.sleep(ACK_DELAY)
-        for stream_id, ack_seq in list(self._ack_pending.items()):
-            await self._send_ack(stream_id, ack_seq)
+        for stream_id, seqs in list(self._ack_pending.items()):
+            for ack_seq in seqs:
+                await self._send_ack(stream_id, ack_seq)
         self._ack_pending.clear()
 
     def __repr__(self) -> str:

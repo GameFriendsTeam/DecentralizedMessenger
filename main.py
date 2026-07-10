@@ -27,18 +27,22 @@ th_ids = {}
 loop = get_async_ctx(__name__)
 
 
+srv_disable_encryption = False
 def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 	global nn_ls, nn_conn, th_ids
 	addr_str = f"{addr[0]}:{addr[1]}"
 	try:
 		suffix = ""
-		server.sinit_encrypt(client)
+		if not srv_disable_encryption:
+			server.sinit_encrypt(client)
+		else:
+			server.ssend(client, Packet({"no_encryption": True}))
 		nn = server.sread(client)[0]["name"]
 		if nn in nn_conn:
 			nn_addr = nn_ls[nn]
 			logging.warning(f"Client {nn} has been connected already. Pinging {nn_addr} connection...")
 			try:
-				pkt, _enc = server.sread(nn_conn.get(nn), 5)
+				pkt, _enc = server.sread(nn_conn.get(nn), 2)
 				if not pkt:
 					raise Exception("")
 				client.close()
@@ -48,7 +52,6 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				nn_ls.pop(nn, None)
 				run_async_ctx(loop, nn_conn.get(nn).close())
 				nn_conn.pop(nn, None)
-				server.stop_handler(th_ids.get(nn))
 				th_ids.pop(nn)
 				logging.info(f"Disconnected {nn_addr}")
 				suffix = "(Reconnect) "
@@ -57,9 +60,13 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 		nn_ls[nn] = addr_str
 		nn_conn[nn] = client
 		th_ids[nn] = th_id
-		server.ssend(client, Packet({"ok": True}), True)
+		logging.info("Sending confirmation...")
+		server.ssend(client, Packet({"ok": True}), not srv_disable_encryption)
+		logging.info("Waiting for ready signal...")
+		status, _enc = server.sread(client)
+		logging.info(f"Ready signal received. {status}")
 
-		while server.isStarted() and (th_id in server._handlers):
+		while server.isStarted() and (th_id in server._handlers) and (nn in nn_conn):
 			packet, _enc = server.sread(client)
 			if not packet:
 				continue
@@ -68,39 +75,39 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				client_ts = packet.get("timestamp", 0)
 				server_ts = time.time()
 				if server_ts-client_ts > ping*1000:
-					server.ssend(client, Packet({"ok": False}), _enc)
+					server.ssend(client, Packet({"ok": False}), _enc and not srv_disable_encryption)
 					continue
-				server.ssend(client, Packet({"ok": True}), _enc)
+				server.ssend(client, Packet({"ok": True}), _enc and not srv_disable_encryption)
 				ping = (server_ts-client_ts)*1000
 				logging.info(f"Server gotten ping packet. Packet latency: {str(int(ping))}ms")
 
 			elif packet.get("stopsrv"):
 				if addr[0] != "127.0.0.1":
-					server.ssend(client, Packet({"ok": False, "error": "You are not host"}), _enc)
+					server.ssend(client, Packet({"ok": False, "error": "You are not host"}), _enc and not srv_disable_encryption)
 					continue
 				logging.info("Stopping server...")
-				server.ssend(client, Packet({"ok": True}), _enc)
+				server.ssend(client, Packet({"ok": True}), _enc and not srv_disable_encryption)
 				server.stop()
 
 			elif packet.get("is_online"):
 				test_nn = packet.get("is_online")
 
 				if test_nn in nn_conn:
-					server.ssend(client, Packet({"online": True}), _enc)
+					server.ssend(client, Packet({"online": True}), _enc and not srv_disable_encryption)
 
 				else:
 					if server.getInternalClient() == None:
-						server.ssend(client, Packet({"online": False}), _enc)
+						server.ssend(client, Packet({"online": False}), _enc and not srv_disable_encryption)
 						continue
 
-					server.getInternalClient().send(Packet({"is_online": test_nn}), _enc)
+					server.getInternalClient().send(Packet({"is_online": test_nn}), _enc and not srv_disable_encryption)
 					status, _enc = server.getInternalClient().read()
-					server.ssend(client, status, _enc)
+					server.ssend(client, status, _enc and not srv_disable_encryption)
 
 			elif packet.get("name", False):
 				new_name = packet.get("name", "")
 				if new_name == "":
-					server.ssend(client, Packet({"ok": False}), _enc)
+					server.ssend(client, Packet({"ok": False}), _enc and not srv_disable_encryption)
 					continue
 
 				old_name = nn
@@ -113,14 +120,14 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				nn_conn.pop(old_name, None)
 
 				logging.info(f"User change name: {old_name} -> {nn}")
-				server.ssend(client, Packet({"ok": True}), _enc)
+				server.ssend(client, Packet({"ok": True}), _enc and not srv_disable_encryption)
 
 			elif packet.get("get_address"):
 				test_nn = packet.get("get_address")
 				if test_nn in nn_conn:
-					server.ssend(client, Packet({"address": nn_ls[test_nn]}), _enc)
+					server.ssend(client, Packet({"address": nn_ls[test_nn]}), _enc and not srv_disable_encryption)
 				else:
-					server.ssend(client, Packet({"address": False}), _enc)
+					server.ssend(client, Packet({"address": False}), _enc and not srv_disable_encryption)
 
 			elif packet.get("disconnect"):
 				server.stop_handler(th_id)
@@ -141,7 +148,7 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				conn = nn_conn.get(getter, None)
 				has_enc = True if server._encryptes.get(conn, None) else False
 				if conn != None:
-					server.ssend(conn, packet, has_enc)
+					server.ssend(conn, packet, has_enc and not srv_disable_encryption)
 					continue
 
 				if packet.get("transmit", False):
@@ -174,11 +181,11 @@ cmdm = None
 current_getter = "server"
 
 
-async def client_handle_4hndl(client: Client):
+def client_handle_4hndl(client: Client):
 	...
 
 
-async def cmd_handle_4hndl(client: Client):
+def cmd_handle_4hndl(client: Client):
 	global cmdm
 	from api.commands.client._HelpCMD import HelpCMD
 
@@ -220,11 +227,16 @@ def handle_client_4clnt(client: Client):
 
 
 def main(args):
+	global srv_disable_encryption
 
 	use_cnf = not args.no_use_config
 	mode = 0 if args.server else 1
 	ui_mode = 1 if args.webui else 0
 	config = Config("settings.conf") if use_cnf else None
+	srv_disable_encryption = args.disable_encryption
+
+	if srv_disable_encryption:
+		logging.warning("Server encryption is disabled. This is not recommended for security reasons.")
 
 	if use_cnf:
 		config.load()
@@ -310,7 +322,13 @@ def main(args):
 
 		client = Client(addr, port, nickname, password, MAX_SIZE_SYNC_PACKET)
 		client.setThread(handle_client_4clnt)
-		client.start()
+		try:
+			client.start()
+		except TimeoutError:
+			logging.error(
+				"Handshake with the server timed out (it may still be evicting a "
+				"stale connection with your username). Please try connecting again."
+			)
 
 	# Start web UI option
 	if ui_mode == 1:
@@ -330,6 +348,7 @@ if __name__ == "__main__":
 		parser.add_argument("--server", "-s", action="store_true", help="Start in server mode")
 		parser.add_argument("--webui", "-w", action="store_true", help="Start with web UI")
 		parser.add_argument("--udp-hole-punching", "-u", action="store_true", help="Enable Server UDP hole punching (experimental)")
+		parser.add_argument("--disable-encryption", "-de", action="store_true", help="Disable encryption (not recommended, Server-side argument)")
 		args = parser.parse_args()
 		main(args)
 	except KeyboardInterrupt:
