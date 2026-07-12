@@ -1,4 +1,3 @@
 cryptography
 sounddevice
 numpy
-getpass
