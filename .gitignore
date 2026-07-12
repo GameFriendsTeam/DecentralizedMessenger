@@ -1,5 +1,6 @@
 __pycache__
 keys/
+.venv
 cleaner.cmd
 decrypting_msg.py
 main-cooeds.py
