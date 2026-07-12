@@ -99,18 +99,19 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 
 			elif packet.get("is_online"):
 				test_nn = packet.get("is_online")
+				logging.debug(f"{test_nn};{test_nn in nn_conn};{nn_conn}")
 
 				if test_nn in nn_conn:
 					server.ssend(client, Packet({"type": "online_check", "online": True}), _enc and not srv_disable_encryption)
+					continue
 
-				else:
-					if server.getInternalClient() == None:
-						server.ssend(client, Packet({"type": "online_check", "online": False}), _enc and not srv_disable_encryption)
-						continue
+				if server.getInternalClient() == None:
+					server.ssend(client, Packet({"type": "online_check", "online": False}), _enc and not srv_disable_encryption)
+					continue
 
-					server.getInternalClient().send(Packet({"type": "online_check", "is_online": test_nn}), _enc and not srv_disable_encryption)
-					status, _enc = server.getInternalClient().wait_packet("online_check", timeout=5.0)
-					server.ssend(client, status, _enc and not srv_disable_encryption)
+				server.getInternalClient().send(Packet({"type": "online_check", "is_online": test_nn}), _enc and not srv_disable_encryption)
+				status, _enc = server.getInternalClient().wait_packet("online_check", timeout=5.0)
+				server.ssend(client, status, _enc and not srv_disable_encryption)
 
 			elif packet.get("name", False):
 				new_name = packet.get("name", "")

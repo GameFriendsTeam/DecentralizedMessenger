@@ -60,6 +60,7 @@ class Server:
 
 
 	async def send(self, socket_obj: Stream, packet: Packet, encrypt: bool = False):
+		logging.debug(f"Sending packet: {packet.getAll()}. Encrypt: {encrypt}")
 		packet_len = len(packet)
 		if encrypt:
 			await self.send_ecryptedpkt(socket_obj, packet.getAll())

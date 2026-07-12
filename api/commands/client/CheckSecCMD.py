@@ -49,7 +49,11 @@ class CheckSecCMD(Command):
 				input("Press Enter to continue...")
 				peer_key_pkt = None
 				while not peer_key_pkt:
-					peer_key_pkt, _ = cs.wait_packet("key_check", timeout=15)
+					data = cs.wait_packet("key_check", timeout=15)
+					if not data:
+						logging.error("No key check packet received. Client<->Client connection is secure: unknown")
+						break
+					peer_key_pkt, _ = data
 				peer_x25519_pub = base64_to_bytes(peer_key_pkt.get("x25519_pub"))
 				peer_ed25519_pub = base64_to_bytes(peer_key_pkt.get("ed25519_pub"))
 				trusted_ed25519_key = enc.get_trusted_peer_key(__main__.current_getter)[0]
