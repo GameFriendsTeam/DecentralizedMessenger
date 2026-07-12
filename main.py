@@ -59,10 +59,10 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				nn_ls.pop(nn, None)
 				try:
 					run_async_ctx(loop, nn_conn.get(nn).close(), 2)
+					nn_conn.pop(nn, None)
+					th_ids.pop(nn)
 				except TimeoutError:
 					logging.warning(f"TimeoutError while closing connection for {nn_addr}")
-				nn_conn.pop(nn, None)
-				th_ids.pop(nn)
 				logging.info(f"Disconnected {nn_addr}")
 				suffix = "(Reconnect) "
 				
