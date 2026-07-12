@@ -190,6 +190,15 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 		server.stop_handler(th_id)
 
 
+def handle_msg(client: Client):
+	while client.isStarted():
+		data = client.wait_packet("message", timeout=5.0)
+		if not data:
+			continue
+		pkt, _enc =  data
+		print(f"{'[E]' if _enc else ''}[{pkt.get('from', 'unknown')}] {pkt.get('content', '[NULL]')}")
+
+
 current_getter = "server"
 cmdm = None
 def handle_client_4clnt(client: Client):

@@ -1,6 +1,3 @@
 cryptography
-pyaudio
-fastapi
-uvicorn
+sounddevice
 numpy
-jinja2
