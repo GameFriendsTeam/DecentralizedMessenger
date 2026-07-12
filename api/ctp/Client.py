@@ -151,12 +151,22 @@ class Client(CommandSender):
 		self._packet_th.start()
 
 		try:
-			srv_key, _ = self.wait_packet("key_exchange", timeout=15)
+			data = self.wait_packet("key_exchange", timeout=15)
+			srv_key = None
+
+			if not data:
+				logging.error("No key exchange packet received. Secure connection will not be used.")
+				self.srv_enc = None
+			else:
+				srv_key, _ = data
+
 			if srv_key is None or srv_key.get("no_encryption"):
 				raise Exception("Server has encryption disabled")
+	
 			self.srv_enc.generate_keypair()
 			key_bytes = self.srv_enc.serialize_public_key()
 			pkt = Packet({"type": "key_exchange", "key": bytes_to_base64(key_bytes)})
+
 			self.send(pkt)
 			self.srv_enc.derive_shared_key(load_public_key(base64_to_bytes(srv_key.get("key"))))
 		except Exception as exc:
@@ -164,7 +174,12 @@ class Client(CommandSender):
 			self.srv_enc = None
 
 		self.sendUsername()
-		status, _enc = self.wait_packet("ready", timeout=15)
+		data = self.wait_packet("ready", timeout=15)
+		if not data:
+			logging.error("No ready packet received. Connection may not be fully established.")
+			self.started = False
+			return
+		_, _enc = data
 		self.send(Packet({"type": "ready", "ready": True}), _enc)
 		logging.info("Ready!")
 
