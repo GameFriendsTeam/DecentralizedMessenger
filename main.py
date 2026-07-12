@@ -75,6 +75,7 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 
 		while server.isStarted() and (th_id in server._handlers) and (nn in nn_conn):
 			packet, _enc = server.sread(client)
+			logging.debug(f"[{nn}] packet: {packet.getAll() if packet else 'None'}. enc: {_enc}")
 			if not packet:
 				continue
 

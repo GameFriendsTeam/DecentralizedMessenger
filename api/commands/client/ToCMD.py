@@ -14,7 +14,11 @@ class ToCMD(Command):
             __main__.current_getter = "server"
 
         cs.send(Packet({"type": "online_check", "is_online": to}), True if cs.srv_enc else False)
-        status, _enc = cs.wait_packet("online_check", timeout=5.0)
+        data = cs.wait_packet("online_check", timeout=5.0)
+        if not data:
+            print(f"data not gotten")
+            return
+        status, _enc = data
         print(status.getAll())
 
         if not status.get("online", False):
