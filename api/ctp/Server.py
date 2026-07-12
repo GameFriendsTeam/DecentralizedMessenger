@@ -47,7 +47,7 @@ class Server:
 		enc = Encryption()
 		pr_k, pub_k = enc.generate_keypair()
 		key_bytes = enc.serialize_public_key()
-		pkt = Packet({"key": bytes_to_base64(key_bytes)})
+		pkt = Packet({"type": "key_exchange", "key": bytes_to_base64(key_bytes)})
 		await self.send(obj, pkt)
 		newPkt, _ = await self.read(obj)
 		obj_key = base64_to_bytes(newPkt.get("key"))
@@ -149,13 +149,11 @@ class Server:
 		self._hp_thread.start()
 
 		while self.started:
-			logging.info("tick")
 			try:
 				conn = await self._ep.accept()
 				logging.info(f"New connection from {conn.remote_addr}")
 				stream = await conn.get_stream(0)
 				await stream.sync()
-				logging.info(f"Stream 0 opened and sync packet received for {conn.remote_addr}")
 				addr = conn.remote_addr
 				th_id = len(self._handlers)
 				self._handlers[th_id] = threading.Thread(target=self._handler, args=[self, stream, addr, th_id], daemon=True)
@@ -195,7 +193,7 @@ class Server:
 		def _handle(client):
 			while client.isStarted():
 				try:
-					s_in, _enc = client.read()
+					s_in, _enc = client.wait_packet("message", timeout=5.0)
 					if s_in is not None and s_in.get('to', 'server') == client.getUsername():
 						logging.info(f"{s_in.get('from', 'unknown')}: {s_in.get('content', '[NULL]')}\n")
 					else:

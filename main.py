@@ -39,10 +39,12 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 	try:
 		suffix = ""
 		if not srv_disable_encryption:
+			server.ssend(client, Packet({"type": "enc_type", "no_encryption": False}))
 			server.sinit_encrypt(client)
 		else:
-			server.ssend(client, Packet({"no_encryption": True}))
-		nn = server.sread(client)[0]["name"]
+			server.ssend(client, Packet({"type": "enc_type", "no_encryption": True}))
+		pkt, _enc_nn = server.sread(client)
+		nn = pkt.get("name", None)
 		if nn in nn_conn:
 			nn_addr = nn_ls[nn]
 			logging.warning(f"Client {nn} has been connected already. Pinging {nn_addr} connection...")
@@ -64,15 +66,12 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				logging.info(f"Disconnected {nn_addr}")
 				suffix = "(Reconnect) "
 				
-		logging.info(f"{suffix}Client({nn}) connected!")
 		nn_ls[nn] = addr_str
 		nn_conn[nn] = client
 		th_ids[nn] = th_id
-		logging.info("Sending confirmation...")
-		server.ssend(client, Packet({"ok": True}), not srv_disable_encryption)
-		logging.info("Waiting for ready signal...")
+		server.ssend(client, Packet({"type": "ready", "ok": True}), not srv_disable_encryption)
 		status, _enc = server.sread(client)
-		logging.info(f"Ready signal received. {status}")
+		logging.info(f"{suffix}Client({nn}) connected! Used encryption: {'yes' if _enc_nn else 'no'}")
 
 		while server.isStarted() and (th_id in server._handlers) and (nn in nn_conn):
 			packet, _enc = server.sread(client)
@@ -83,39 +82,39 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				client_ts = packet.get("timestamp", 0)
 				server_ts = time.time()
 				if server_ts-client_ts > ping*1000:
-					server.ssend(client, Packet({"ok": False}), _enc and not srv_disable_encryption)
+					server.ssend(client, Packet({"type": "status", "ok": False}), _enc and not srv_disable_encryption)
 					continue
-				server.ssend(client, Packet({"ok": True}), _enc and not srv_disable_encryption)
+				server.ssend(client, Packet({"type": "status", "ok": True}), _enc and not srv_disable_encryption)
 				ping = (server_ts-client_ts)*1000
 				logging.info(f"Server gotten ping packet. Packet latency: {str(int(ping))}ms")
 
 			elif packet.get("stopsrv"):
 				if addr[0] != "127.0.0.1":
-					server.ssend(client, Packet({"ok": False, "error": "You are not host"}), _enc and not srv_disable_encryption)
+					server.ssend(client, Packet({"type": "status", "ok": False, "error": "You are not host"}), _enc and not srv_disable_encryption)
 					continue
 				logging.info("Stopping server...")
-				server.ssend(client, Packet({"ok": True}), _enc and not srv_disable_encryption)
+				server.ssend(client, Packet({"type": "status", "ok": True}), _enc and not srv_disable_encryption)
 				server.stop()
 
 			elif packet.get("is_online"):
 				test_nn = packet.get("is_online")
 
 				if test_nn in nn_conn:
-					server.ssend(client, Packet({"online": True}), _enc and not srv_disable_encryption)
+					server.ssend(client, Packet({"type": "online_check", "online": True}), _enc and not srv_disable_encryption)
 
 				else:
 					if server.getInternalClient() == None:
-						server.ssend(client, Packet({"online": False}), _enc and not srv_disable_encryption)
+						server.ssend(client, Packet({"type": "online_check", "online": False}), _enc and not srv_disable_encryption)
 						continue
 
-					server.getInternalClient().send(Packet({"is_online": test_nn}), _enc and not srv_disable_encryption)
-					status, _enc = server.getInternalClient().read()
+					server.getInternalClient().send(Packet({"type": "online_check", "is_online": test_nn}), _enc and not srv_disable_encryption)
+					status, _enc = server.getInternalClient().wait_packet("online_check", timeout=5.0)
 					server.ssend(client, status, _enc and not srv_disable_encryption)
 
 			elif packet.get("name", False):
 				new_name = packet.get("name", "")
 				if new_name == "":
-					server.ssend(client, Packet({"ok": False}), _enc and not srv_disable_encryption)
+					server.ssend(client, Packet({"type": "status", "ok": False}), _enc and not srv_disable_encryption)
 					continue
 
 				old_name = nn
@@ -128,14 +127,14 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				nn_conn.pop(old_name, None)
 
 				logging.info(f"User change name: {old_name} -> {nn}")
-				server.ssend(client, Packet({"ok": True}), _enc and not srv_disable_encryption)
+				server.ssend(client, Packet({"type": "status", "ok": True}), _enc and not srv_disable_encryption)
 
 			elif packet.get("get_address"):
 				test_nn = packet.get("get_address")
 				if test_nn in nn_conn:
-					server.ssend(client, Packet({"address": nn_ls[test_nn]}), _enc and not srv_disable_encryption)
+					server.ssend(client, Packet({"type": "get_address", "address": nn_ls[test_nn]}), _enc and not srv_disable_encryption)
 				else:
-					server.ssend(client, Packet({"address": False}), _enc and not srv_disable_encryption)
+					server.ssend(client, Packet({"type": "get_address", "address": False}), _enc and not srv_disable_encryption)
 
 			elif packet.get("disconnect"):
 				server.stop_handler(th_id)
@@ -191,15 +190,9 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 		server.stop_handler(th_id)
 
 
-cmdm = None
 current_getter = "server"
-
-
-def client_handle_4hndl(client: Client):
-	...
-
-
-def cmd_handle_4hndl(client: Client):
+cmdm = None
+def handle_client_4clnt(client: Client):
 	global cmdm
 	from api.commands.client._HelpCMD import HelpCMD
 
@@ -223,6 +216,7 @@ def cmd_handle_4hndl(client: Client):
 				nonce, ciphertext = encript.encrypt_message(msg.encode("utf-8"))
 
 				client.transmit(Packet({
+					"type": "message",
 					"content": "Encrypted",
 					"from": client.getUsername(),
 					"to": current_getter,
@@ -230,14 +224,11 @@ def cmd_handle_4hndl(client: Client):
 				}), True)
 			else:
 				client.transmit(Packet({
+					"type": "message",
 					"content": msg,
 					"from": client.getUsername(),
 					"to": current_getter
 				}), True)
-
-
-def handle_client_4clnt(client: Client):
-	asyncio.gather(client_handle_4hndl(client), cmd_handle_4hndl(client))
 
 
 def main(args):
@@ -361,7 +352,12 @@ if __name__ == "__main__":
 		parser.add_argument("--disable-encryption", "-de", action="store_true", help="Disable encryption (not recommended, Server-side argument)")
 		parser.add_argument("--host", "-H", type=str, default="127.0.0.1", help="Address for run server")
 		parser.add_argument("--port", "-p", type=int, default=1414, help="Port for run server")
+		parser.add_argument("--debug", "-d", action="store_true", help="Enable debug logging")
 		args = parser.parse_args()
+
+		if args.debug:
+			logging.getLogger().setLevel(logging.DEBUG)
+
 		main(args)
 	except KeyboardInterrupt:
 		pass

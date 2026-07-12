@@ -13,8 +13,8 @@ class ToCMD(Command):
         if to == "":
             __main__.current_getter = "server"
 
-        cs.send(Packet({"is_online": to}), True if cs.srv_enc else False)
-        status, _enc = cs.read()
+        cs.send(Packet({"type": "online_check", "is_online": to}), True if cs.srv_enc else False)
+        status, _enc = cs.wait_packet("online_check", timeout=5.0)
         print(status.getAll())
 
         if not status.get("online", False):

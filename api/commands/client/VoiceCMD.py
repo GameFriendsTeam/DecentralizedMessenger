@@ -43,9 +43,9 @@ class VoiceCMD(Command):
         encript = cs.get_encript(__main__.current_getter)
 
         nonce, chipertext = encript.encrypt_message(you.encode("utf-8"))
-        cs.transmit(Packet({"my_addr": [bytes_to_base64(nonce), bytes_to_base64(chipertext)], "to": __main__.current_getter}), True)
+        cs.transmit(Packet({"type": "my_addr", "my_addr": [bytes_to_base64(nonce), bytes_to_base64(chipertext)], "to": __main__.current_getter}), True)
 
-        peer_pkt, _enc = cs.read()
+        peer_pkt, _enc = cs.wait_packet("my_addr", timeout=5.0)
         nonce, chipertext = peer_pkt.get("my_addr", None)[0], peer_pkt.get("my_addr", None)[1]
         dec_addr = encript.decrypt_message(base64_to_bytes(nonce), base64_to_bytes(chipertext)).decode("utf-8")
         target_addr, peer_port = parse_addr(dec_addr)

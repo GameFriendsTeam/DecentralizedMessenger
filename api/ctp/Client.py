@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+import threading
 from typing import Optional
 from cryptography.hazmat.primitives.asymmetric import x25519
 from api.commands.CommandSender import CommandSender
@@ -26,7 +27,6 @@ class Client(CommandSender):
 		self._loop = get_async_ctx(self.__class__.__name__)
 		_ep = run_async_ctx(self._loop, Endpoint.create(host=("127.0.0.1" if addr == "127.0.0.1" else "0.0.0.0"), port=0))
 		conn = _ep.connect((addr, port))
-		logging.info("Waiting opening stream and sync packet...")
 
 		self._stream = conn.open_stream(0, False, True)
 		try:
@@ -35,6 +35,7 @@ class Client(CommandSender):
 			raise Exception(f"Timeout while waiting for sending sync packet to {addr}:{port}")
 
 		self.started = False
+		self.packets = {}
 		self.targetAddr = addr
 		self.targetPort = port
 		self.size_sync_p = mssp
@@ -144,29 +145,27 @@ class Client(CommandSender):
 
 	def start(self):
 		#self.socket.connect((self.targetAddr, self.targetPort))
+		self.started = True
+
+		self._packet_th = threading.Thread(target=self.packet_handler, daemon=True)
+		self._packet_th.start()
 
 		try:
-			srv_key, _ = self.read()
+			srv_key, _ = self.wait_packet("key_exchange", timeout=15)
 			if srv_key is None or srv_key.get("no_encryption"):
 				raise Exception("Server has encryption disabled")
-			logging.info(f"Server key received: {srv_key}")
 			self.srv_enc.generate_keypair()
 			key_bytes = self.srv_enc.serialize_public_key()
-			pkt = Packet({"key": bytes_to_base64(key_bytes)})
+			pkt = Packet({"type": "key_exchange", "key": bytes_to_base64(key_bytes)})
 			self.send(pkt)
 			self.srv_enc.derive_shared_key(load_public_key(base64_to_bytes(srv_key.get("key"))))
 		except Exception as exc:
 			logging.error(f"Error while establishing secure connection: {exc}. Secure connection will not be used.")
 			self.srv_enc = None
 
-		self.started = True
-		logging.info("Connected! Sending username...")
 		self.sendUsername()
-		logging.info("Username sent. Waiting for confirmation...")
-		status, _enc = self.read(timeout=15)
-		logging.info(f"Confirmation received: {status}.")
-		self.send(Packet({"ready": True}), _enc)
-		logging.info("Ready signal sent.")
+		status, _enc = self.wait_packet("ready", timeout=15)
+		self.send(Packet({"type": "ready", "ready": True}), _enc)
 		logging.info("Ready!")
 
 		th = self._th
@@ -175,8 +174,10 @@ class Client(CommandSender):
 
 
 	def stop(self):
+		self.started = False
 		try:
-			self.send(Packet({"disconnect": True}), True)
+			self.send(Packet({"type": "connection_info", "disconnect": True}), True)
+			self._packet_th.join()
 		except ConnectionError:
 			...
 		except BrokenPipeError:
@@ -186,7 +187,6 @@ class Client(CommandSender):
 		finally:
 			#self.socket.close()
 			self._loop.stop()
-			self.started = False
 
 	def isStarted(self): return self.started
 
@@ -200,9 +200,9 @@ class Client(CommandSender):
 	def _cc(self, timeout: int):
 		"""Check connection by sending ping and waiting up to timeout seconds."""
 		ts = time.time()
-		self.send(Packet({"ping": timeout, "timestamp": ts}), True)
+		self.send(Packet({"type": "cc", "ping": timeout, "timestamp": ts}), True)
 
-		server_status = self.read()[0].get("ok", False)
+		server_status = self.wait_packet("cc", timeout)[0].get("ok", False)
 		end_ts = time.time()
 		status = server_status and (end_ts-ts<=timeout*1000)
 		return (status, (end_ts-ts))
@@ -263,7 +263,7 @@ class Client(CommandSender):
 		packet_with_key = None
 
 		while not packet_with_key:
-			packet, _ = self.read(timeout)
+			packet, _ = self.wait_packet("key_exchange", timeout)
 			logging.info(packet)
 			if packet.get("signature"):
 				packet_with_key = packet
@@ -291,3 +291,37 @@ class Client(CommandSender):
 
 		peer_key = x25519.X25519PublicKey.from_public_bytes(peer_x25519_pub)
 		encript.derive_shared_key(peer_key)
+
+
+	def packet_handler(self):
+		while self.started:
+			try:
+				data = self.read(1)
+				if not data:
+					continue
+				packet, _enc = data
+				logging.debug(f"Packet received: {packet}, encrypted: {_enc}")
+				pkt_type = packet.get("type", "unknown")
+				if pkt_type:
+					self.packets[pkt_type] = packet, _enc
+			except TimeoutError:
+				pass
+			except RuntimeError as exc:
+				logging.error(f"Runtime error while reading packet: {exc}")
+				self.stop()
+			except Exception as exc:
+				logging.error(f"Error while reading packet: {exc}")
+				self.stop()
+
+
+	def get_packet(self, type_p: str):
+		return self.packets.get(type_p, None)
+
+
+	def wait_packet(self, type_p: str, timeout: float = 5.0):
+		start_time = time.time()
+		while time.time() - start_time < timeout:
+			pkt = self.get_packet(type_p)
+			if pkt:
+				return pkt
+		return None

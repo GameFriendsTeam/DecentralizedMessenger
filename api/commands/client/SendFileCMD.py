@@ -49,23 +49,23 @@ class SendFileCMD(Command):
 
         nonce, ciphertext = encript.encrypt_message(key)
         cs.transmit(Packet({
-            "content": "/sf",
-            "type": "key2file",
+            "content": "key2file",
+            "type": "message",
             "from": cs.getUsername(),
             "to": __main__.current_getter,
             "encrypted": [bytes_to_base64(nonce), bytes_to_base64(ciphertext)]
         }), True)
-        status0, _enc = cs.read()
+        status0, _enc = cs.wait_packet("status", timeout=5.0)
 
         nonce, ciphertext = encript.encrypt_message(path_obj.name.encode("utf-8"))
         cs.transmit(Packet({
-            "content": "/sf",
+            "content": "filedata",
             "type": "filedata",
             "from": cs.getUsername(),
             "to": __main__.current_getter,
             "encrypted": bytes_to_base64(ed),
             "filename": [bytes_to_base64(nonce), bytes_to_base64(ciphertext)]
         }), True)
-        status1, _enc = cs.read()
+        status1, _enc = cs.wait_packet("status", timeout=5.0)
         print(status0)
         print(status1)

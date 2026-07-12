@@ -29,3 +29,9 @@ class CommandSender:
 
     def read_key(self, sender: str, timeout: int = 6):
         pass
+
+    def wait_packet(self, type_p: str, timeout: float = 5.0):
+        pass
+
+    def get_packet(self, type_p: str):
+        pass

@@ -4,7 +4,7 @@ from api.Packet import Packet
 import __main__
 import logging
 
-from api.utils.Other import bytes_to_base64
+from api.utils.Other import base64_to_bytes, bytes_to_base64
 
 
 class CheckSecCMD(Command):
@@ -14,8 +14,8 @@ class CheckSecCMD(Command):
 	def execute(self, cs: CommandSender):
 		first_check = cs.connectionIsSecure()
 
-		cs.send(Packet({"ping": 5}), first_check)
-		okay, enc = cs.read()
+		cs.send(Packet({"type": "cc", "ping": 5}), first_check)
+		okay, enc = cs.wait_packet("cc", timeout=5.0)
 		second_check = enc
 		third_check = None
 		if __main__.current_getter != "server":
@@ -47,13 +47,15 @@ class CheckSecCMD(Command):
 					"ed25519_pub": bytes_to_base64(my_ed25519_pub)
 				}))
 				input("Press Enter to continue...")
-				peer_key_pkt, _ = cs.read(None)
-				peer_x25519_pub = bytes_to_base64(peer_key_pkt.get("x25519_pub"))
-				peer_ed25519_pub = bytes_to_base64(peer_key_pkt.get("ed25519_pub"))
+				peer_key_pkt = None
+				while not peer_key_pkt:
+					peer_key_pkt, _ = cs.wait_packet("key_check", timeout=15)
+				peer_x25519_pub = base64_to_bytes(peer_key_pkt.get("x25519_pub"))
+				peer_ed25519_pub = base64_to_bytes(peer_key_pkt.get("ed25519_pub"))
 				trusted_ed25519_key = enc.get_trusted_peer_key(__main__.current_getter)[0]
 				trusted_x25519_key = enc.get_trusted_peer_key(__main__.current_getter)[1]
 
-				if peer_ed25519_pub != bytes_to_base64(trusted_ed25519_key) or peer_x25519_pub != bytes_to_base64(trusted_x25519_key):
+				if peer_ed25519_pub != trusted_ed25519_key or peer_x25519_pub != trusted_x25519_key:
 					peer_is_not_sus = True
 				yes_str = "yes" if not peer_is_not_sus else "sus"
 				text2 = f"Client<->Client connection is secure: {yes_str}"

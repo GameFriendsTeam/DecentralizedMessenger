@@ -15,7 +15,7 @@ class ReadCMD(Command):
 
         try:
             while active:
-                packet, _enc = cs.read(None)
+                packet, _enc = cs.wait_packet("message", timeout=5.0)
                 if not packet:
                     continue
                 sender, content = packet.get("from", "[unknown]"), packet.get("content", "[ERROR]")
@@ -31,20 +31,16 @@ class ReadCMD(Command):
                     print(f"{sender}: {decripted}")
                     continue
 
-                elif content == "/sf":
+                elif content == "key2file":
                     encript = cs.get_encript(__main__.current_getter)
                     if not encript:
                         continue
-                    pkt0 = packet
-                    pkt1, _enc = cs.read(None)
-                    if pkt0.get("type", None) != "key2file":
-                        pkt0 = pkt1
-                        pkt1, _enc = cs.read(None)
+                    pkt1, _enc = cs.wait_packet("filedata", timeout=5.0)
                     if pkt1.get("type", None) != "filedata":
                         print("Incorrect data")
                         continue
 
-                    encrypted = pkt0.get("encrypted")
+                    encrypted = packet.get("encrypted")
                     key = bytes(encript.decrypt_message(base64_to_bytes(encrypted[0]), base64_to_bytes(encrypted[1])))
 
                     fe = FileEncryption(key)

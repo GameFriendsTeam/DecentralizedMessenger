@@ -22,7 +22,7 @@ class RawCMD(Command):
         if isinstance(data, dict):
             cs.send(Packet(data), True)
         else:
-            cs.send(Packet({"data": data}), True)
-        result, _enc = cs.read()
+            cs.send(Packet({"type": "raw", "data": data}), True)
+        result, _enc = cs.wait_packet("status", 5.0)
         data = json.dumps(result.getAll())
         print(data, f"Is encrypted: {_enc}", sep="\n")

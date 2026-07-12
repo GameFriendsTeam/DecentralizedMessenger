@@ -1,3 +1,4 @@
+import logging
 from api.commands.Command import Command
 from api.commands.CommandSender import CommandSender
 
@@ -7,4 +8,5 @@ class QCMD(Command):
         pass
 
     def execute(self, cs: CommandSender):
+        logging.info("Closing connection...")
         cs.stop()
