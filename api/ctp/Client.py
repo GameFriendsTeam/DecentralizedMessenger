@@ -28,7 +28,7 @@ class Client(CommandSender):
 		_ep = run_async_ctx(self._loop, Endpoint.create(host=("127.0.0.1" if addr == "127.0.0.1" else "0.0.0.0"), port=0))
 		conn = _ep.connect((addr, port))
 
-		self._stream = conn.open_stream(0, False, True)
+		self._stream = conn.open_stream(0, True, True)
 		try:
 			run_async_ctx(self._loop, self._stream.sync(), timeout=5.0)
 		except TimeoutError:

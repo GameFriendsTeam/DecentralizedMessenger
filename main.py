@@ -58,7 +58,7 @@ def handle_client_4srv(server: Server, client: Stream, addr, th_id):
 				logging.warning(F"Connection of {nn_addr} out of date")
 				nn_ls.pop(nn, None)
 				try:
-					run_async_ctx(loop, nn_conn.get(nn).close())
+					run_async_ctx(loop, nn_conn.get(nn).close(), 2)
 				except TimeoutError:
 					logging.warning(f"TimeoutError while closing connection for {nn_addr}")
 				nn_conn.pop(nn, None)
