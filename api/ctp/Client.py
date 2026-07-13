@@ -311,7 +311,7 @@ class Client(CommandSender):
 	def packet_handler(self):
 		while self.started:
 			try:
-				data = self.read(1)
+				data = self.read(None)
 				if not data:
 					continue
 				packet, _enc = data
@@ -319,14 +319,10 @@ class Client(CommandSender):
 				pkt_type = packet.get("type", "unknown")
 				if pkt_type:
 					self.packets[pkt_type] = packet, _enc
-			except TimeoutError:
-				pass
 			except RuntimeError as exc:
 				logging.error(f"Runtime error while reading packet: {exc}")
-				self.stop()
 			except Exception as exc:
 				logging.error(f"Error while reading packet: {exc}")
-				self.stop()
 
 
 	def get_packet(self, type_p: str):
