@@ -48,7 +48,7 @@ try:
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.close()
 
-except ImportError:
+except ImportError or OSError:
     print("sounddevice is not available. Audio functionality will be disabled.")
     class Audio:
         def __init__(self, *args, **kwargs):
