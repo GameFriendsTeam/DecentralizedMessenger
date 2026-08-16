@@ -2,7 +2,10 @@ import numpy as np
 from typing import Generator
 
 try:
-    import sounddevice as sd
+    try:
+        import sounddevice as sd
+    except Exception as e:
+        raise ImportError(str(e))
     class Audio:
         def __init__(self, chunk: int, channels: int = 1, rate: int = 441000, input_device_index: int = 0, output_device_index: int = 0):
             self._chunk = chunk
@@ -48,7 +51,7 @@ try:
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.close()
 
-except ImportError or OSError:
+except ImportError:
     print("sounddevice is not available. Audio functionality will be disabled.")
     class Audio:
         def __init__(self, *args, **kwargs):
