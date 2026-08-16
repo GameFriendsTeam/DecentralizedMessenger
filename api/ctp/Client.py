@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import time
 import threading
 from typing import Optional
@@ -26,7 +27,13 @@ class Client(CommandSender):
 	def __init__(self, addr: str, port: int, username: str, password: str, mssp: int):
 		self._loop = get_async_ctx(self.__class__.__name__)
 		_ep = run_async_ctx(self._loop, Endpoint.create(host=("127.0.0.1" if addr == "127.0.0.1" else "0.0.0.0"), port=0))
-		conn = _ep.connect((addr, port))
+
+		# Resolve the hostname to a numeric IP before handing it to the UDP
+		# transport. transport.sendto() (esp. on Windows/Proactor) requires an
+		# already-resolved address; passing a raw hostname fails with
+		# WSAEINVAL (WinError 10022) on every send.
+		resolved_addr = run_async_ctx(self._loop, self._loop.getaddrinfo(addr, port, type=socket.SOCK_DGRAM))[0][4][0]
+		conn = _ep.connect((resolved_addr, port))
 
 		self._stream = conn.open_stream(0, True, True)
 		try:

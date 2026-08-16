@@ -126,11 +126,15 @@ def rm_async_ctx(key) -> None:
 		del _threads[key]
 
 
-def is_valid_ip(ip_str):
-	try:
-		ipaddress.ip_address(ip_str)
+def validate_target(address: str):
+	import re
+
+	domain_regex = re.compile(r"^(?!-)[a-zA-Z0-9-]{1,63}(?<!-)(\.(?!-)[a-zA-Z0-9-]{1,63}(?<!-))*$")
+	ip_regex = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
+
+	if domain_regex.match(address) or ip_regex.match(address):
 		return True
-	except ValueError:
+	else:
 		return False
 
 

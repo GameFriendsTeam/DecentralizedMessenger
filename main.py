@@ -6,7 +6,7 @@ from api.ctp.Client import Client
 from api.Packet import Packet
 from api.protocol.stream import Stream
 from api.utils.network import find_servers_local, find_servers_global, ScanStatus
-from api.utils.Other import get_all_commands, Config, bytes_to_base64, get_async_ctx, is_valid_ip, run_async_ctx
+from api.utils.Other import get_all_commands, Config, bytes_to_base64, get_async_ctx, validate_target, run_async_ctx
 from api.hp.Server import handle_client
 import json, threading, random, uuid
 import logging
@@ -317,8 +317,8 @@ def main(args):
 				logging.info("Invalid input format. Please enter in the format 'address:port'.")
 				return
 
-			if not is_valid_ip(addr):
-				logging.info("Invalid IP address")
+			if not validate_target(addr):
+				logging.info("Invalid IP address or domain")
 				return
 			if use_cnf:
 				config.set("address", addr)
