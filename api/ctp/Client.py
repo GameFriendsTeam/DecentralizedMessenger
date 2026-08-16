@@ -101,6 +101,8 @@ class Client(CommandSender):
 		rawLen = rawLen[:packetEnd + 1]
 
 		lenPacket = Packet.fromRaw(rawLen).get("len", 128)
+		if not lenPacket:
+			return None, False
 		rawPacket = run_async_ctx(self._loop, self._stream.recv(), timeout)
 		if not rawPacket or lenPacket < 1: return None, False
 

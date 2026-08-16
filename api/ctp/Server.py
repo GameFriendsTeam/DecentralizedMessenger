@@ -87,7 +87,7 @@ class Server:
 		run_async_ctx(self.loop, self.send_ecryptedpkt(socket_obj, data), timeout=5.0)
 
 
-	async def read(self, socket_obj: Stream) -> tuple[Packet, bool]:
+	async def read(self, socket_obj: Stream) -> tuple[Optional[Packet], bool]:
 		"""
 		Read packet from socket_obj
 		Returns:
@@ -104,6 +104,8 @@ class Server:
 			return await self.read_ecryptedpkt(socket_obj, rawLen), True
 
 		lenPacket = Packet.fromRaw(rawLen[:packetEnd + 1])["len"]
+		if not lenPacket:
+			return None, False
 		rawPacket = await socket_obj.recv()
 		if not rawPacket or lenPacket < 1:
 			return None, False
@@ -127,6 +129,8 @@ class Server:
 
 		payload = EncryptedPacket.extractPayload(rawLen)
 		lenPacket = EncryptedPacket.fromRaw(payload, enc)["len"]
+		if not lenPacket:
+			return None, False
 		rawPacket = await socket_obj.recv()
 		if not rawPacket or lenPacket < 1:
 			return None
